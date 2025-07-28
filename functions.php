@@ -18,6 +18,8 @@ function checkLogin($kullanici_adi, $sifre) {
 }
 
 
+
+
 // -- kategori.php fonksiyonları --
 /**
  * Tüm kategorileri döner.
@@ -569,12 +571,11 @@ function randevuGuncelle($id, $danisan_id, $personel_id, $seans_turu_id, $randev
 
 
 
-// Danışan ekleme
-function danisanEkle($ad, $soyad, $email, $telefon, $adres, $yas, $meslek) {
+function danisanEkle($ad, $soyad, $email, $telefon, $adres, $yas, $meslek, $vergi_dairesi = null, $vergi_numarasi = null, $fatura_adresi = null) {
     global $pdo;
     try {
-        $sql = "INSERT INTO danisanlar (ad, soyad, email, telefon, adres, yas, meslek) 
-                VALUES (:ad, :soyad, :email, :telefon, :adres, :yas, :meslek)";
+        $sql = "INSERT INTO danisanlar (ad, soyad, email, telefon, vergi_dairesi, vergi_numarasi, fatura_adresi, adres, yas, meslek) 
+                VALUES (:ad, :soyad, :email, :telefon, :vergi_dairesi, :vergi_numarasi, :fatura_adresi, :adres, :yas, :meslek)";
         
         $sorgu = $pdo->prepare($sql);
         return $sorgu->execute([
@@ -582,17 +583,21 @@ function danisanEkle($ad, $soyad, $email, $telefon, $adres, $yas, $meslek) {
             'soyad' => $soyad,
             'email' => $email,
             'telefon' => $telefon,
+            'vergi_dairesi' => $vergi_dairesi,
+            'vergi_numarasi' => $vergi_numarasi,
+            'fatura_adresi' => $fatura_adresi,
             'adres' => $adres,
             'yas' => $yas,
             'meslek' => $meslek
         ]);
     } catch(PDOException $e) {
+        error_log("Danışan ekleme hatası: " . $e->getMessage());
         return false;
     }
 }
 
-// Danışan güncelleme
-function danisanGuncelle($id, $ad, $soyad, $email, $telefon, $adres, $yas, $meslek, $uyelik_turu_id = null) {
+// Danışan güncelleme - YENİ ALANLAR EKLENDİ
+function danisanGuncelle($id, $ad, $soyad, $email, $telefon, $adres, $yas, $meslek, $uyelik_turu_id = null, $vergi_dairesi = null, $vergi_numarasi = null, $fatura_adresi = null) {
     global $pdo;
     try {
         $sql = "UPDATE danisanlar 
@@ -600,6 +605,9 @@ function danisanGuncelle($id, $ad, $soyad, $email, $telefon, $adres, $yas, $mesl
                     soyad = :soyad, 
                     email = :email, 
                     telefon = :telefon,
+                    vergi_dairesi = :vergi_dairesi,
+                    vergi_numarasi = :vergi_numarasi,
+                    fatura_adresi = :fatura_adresi,
                     adres = :adres,
                     yas = :yas,
                     meslek = :meslek,
@@ -613,12 +621,16 @@ function danisanGuncelle($id, $ad, $soyad, $email, $telefon, $adres, $yas, $mesl
             'soyad' => $soyad,
             'email' => $email,
             'telefon' => $telefon,
+            'vergi_dairesi' => $vergi_dairesi,
+            'vergi_numarasi' => $vergi_numarasi,
+            'fatura_adresi' => $fatura_adresi,
             'adres' => $adres,
             'yas' => $yas,
             'meslek' => $meslek,
             'uyelik_turu_id' => $uyelik_turu_id
         ]);
     } catch(PDOException $e) {
+        error_log("Danışan güncelleme hatası: " . $e->getMessage());
         return false;
     }
 }
@@ -939,7 +951,77 @@ function generateUUID() {
     );
 }
 
-function satisEkle($danisan_id, $hizmet_paketi_id, $personel_id, $toplam_tutar, $odenen_tutar, $odeme_tipi, $vade_tarihi = null, $hediye_seans = 0, $indirim_tutari = 0, $indirim_yuzdesi = null) {
+// Ödeme türlerini getiren fonksiyon (functions.php'ye eklenecek)
+function getOdemeTurleri() {
+    global $pdo;
+    try {
+        $sql = "SELECT id, kod, ad, aciklama FROM odeme_turleri WHERE aktif = 1 ORDER BY ad";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Ödeme türleri getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+
+function getSatisTurleri() {
+    global $pdo;
+    try {
+        $sql = "SELECT id, ad, aciklama FROM satis_turleri WHERE aktif = 1 ORDER BY ad";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Satış türleri getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function satisEkle($danisan_id, $hizmet_paketi_id, $personel_id, $toplam_tutar, $odenen_tutar, $vade_tarihi = null, $hediye_seans = 0, $indirim_tutari = 0, $indirim_yuzdesi = null, $notlar = null, $satis_turu_id = 1, $islem_login_id = null, $odeme_turu_id = null) {
+    global $pdo;
+    try {
+        $satis_id = generateUUID();
+        
+        $sql = "INSERT INTO satislar (
+                    id, danisan_id, hizmet_paketi_id, personel_id,
+                    toplam_tutar, odenen_tutar, odeme_turu_id,
+                    vade_tarihi, hediye_seans, indirim_tutari,
+                    indirim_yuzdesi, durum, notlar, satis_turu_id, islem_login_id
+                ) VALUES (
+                    :id, :danisan_id, :hizmet_paketi_id, :personel_id,
+                    :toplam_tutar, :odenen_tutar, :odeme_turu_id,
+                    :vade_tarihi, :hediye_seans, :indirim_tutari,
+                    :indirim_yuzdesi, 'beklemede', :notlar, :satis_turu_id, :islem_login_id
+                )";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            'id' => $satis_id,
+            'danisan_id' => $danisan_id,
+            'hizmet_paketi_id' => $hizmet_paketi_id,
+            'personel_id' => $personel_id,
+            'toplam_tutar' => $toplam_tutar,
+            'odenen_tutar' => $odenen_tutar,
+            'odeme_turu_id' => $odeme_turu_id,
+            'vade_tarihi' => $vade_tarihi,
+            'hediye_seans' => $hediye_seans,
+            'indirim_tutari' => $indirim_tutari,
+            'indirim_yuzdesi' => $indirim_yuzdesi,
+            'notlar' => $notlar,
+            'satis_turu_id' => $satis_turu_id,
+            'islem_login_id' => $islem_login_id
+        ]);
+        
+        return $satis_id;
+    } catch(PDOException $e) {
+        error_log("Satış ekleme hatası: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+function satisEkleTemmuz27($danisan_id, $hizmet_paketi_id, $personel_id, $toplam_tutar, $odenen_tutar, $odeme_tipi, $vade_tarihi = null, $hediye_seans = 0, $indirim_tutari = 0, $indirim_yuzdesi = null,$notlar = null) {
     global $pdo;
     try {
         $satis_id = generateUUID();
@@ -948,12 +1030,12 @@ function satisEkle($danisan_id, $hizmet_paketi_id, $personel_id, $toplam_tutar, 
                     id, danisan_id, hizmet_paketi_id, personel_id,
                     toplam_tutar, odenen_tutar, odeme_tipi,
                     vade_tarihi, hediye_seans, indirim_tutari,
-                    indirim_yuzdesi, durum
+                    indirim_yuzdesi, durum,notlar
                 ) VALUES (
                     :id, :danisan_id, :hizmet_paketi_id, :personel_id,
                     :toplam_tutar, :odenen_tutar, :odeme_tipi,
                     :vade_tarihi, :hediye_seans, :indirim_tutari,
-                    :indirim_yuzdesi, 'beklemede'
+                    :indirim_yuzdesi, 'beklemede', :notlar
                 )";
         
         $stmt = $pdo->prepare($sql);
@@ -968,7 +1050,8 @@ function satisEkle($danisan_id, $hizmet_paketi_id, $personel_id, $toplam_tutar, 
             'vade_tarihi' => $vade_tarihi,
             'hediye_seans' => $hediye_seans,
             'indirim_tutari' => $indirim_tutari,
-            'indirim_yuzdesi' => $indirim_yuzdesi
+            'indirim_yuzdesi' => $indirim_yuzdesi,
+             'notlar' => $notlar
         ]);
         
         return $satis_id;
@@ -978,31 +1061,68 @@ function satisEkle($danisan_id, $hizmet_paketi_id, $personel_id, $toplam_tutar, 
     }
 }
 
-function taksitEkle($satis_id, $tutar, $vade_tarihi) {
+// Güncellenmiş taksitEkle fonksiyonu - sadece odeme_turu_id
+function taksitEkle($satis_id, $tutar, $vade_tarihi, $odeme_turu_id = null) {
     global $pdo;
     try {
         $taksit_id = generateUUID();
         
         $sql = "INSERT INTO taksitler (
-                    id, satis_id, tutar, vade_tarihi, odendi
+                    id, satis_id, tutar, vade_tarihi, odeme_turu_id
                 ) VALUES (
-                    :id, :satis_id, :tutar, :vade_tarihi, 0
+                    :id, :satis_id, :tutar, :vade_tarihi, :odeme_turu_id
                 )";
         
         $stmt = $pdo->prepare($sql);
-        return $stmt->execute([
+        $stmt->execute([
             'id' => $taksit_id,
             'satis_id' => $satis_id,
             'tutar' => $tutar,
-            'vade_tarihi' => $vade_tarihi
+            'vade_tarihi' => $vade_tarihi,
+            'odeme_turu_id' => $odeme_turu_id
         ]);
+        
+        return $taksit_id;
     } catch(PDOException $e) {
         error_log("Taksit ekleme hatası: " . $e->getMessage());
         throw $e;
     }
 }
 
-function odemeEkle($satis_id, $tutar, $odeme_tipi, $odeme_tarihi) {
+
+// Güncellenmiş odemeEkle fonksiyonu (functions.php'de güncellenecek)
+// Temizlenmiş odemeEkle fonksiyonu - sadece odeme_turu_id
+function odemeEkle($satis_id, $tutar, $odeme_tarihi, $notlar = null, $odeme_turu_id = null) {
+    global $pdo;
+    try {
+        $odeme_id = generateUUID();
+        
+        $sql = "INSERT INTO odemeler (
+                    id, satis_id, tutar, odeme_turu_id,
+                    odeme_tarihi, notlar
+                ) VALUES (
+                    :id, :satis_id, :tutar, :odeme_turu_id,
+                    :odeme_tarihi, :notlar
+                )";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            'id' => $odeme_id,
+            'satis_id' => $satis_id,
+            'tutar' => $tutar,
+            'odeme_turu_id' => $odeme_turu_id,
+            'odeme_tarihi' => $odeme_tarihi,
+            'notlar' => $notlar
+        ]);
+        
+        return $odeme_id;
+    } catch(PDOException $e) {
+        error_log("Ödeme ekleme hatası: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+function odemeEkleTemmuz($satis_id, $tutar, $odeme_tipi, $odeme_tarihi) {
     global $pdo;
     try {
         $odeme_id = generateUUID();
@@ -2370,7 +2490,299 @@ createRoomsTable();
 
 
 
+// UUID oluşturma fonksiyonu (eğer yoksa)
+if (!function_exists('generateUUID')) {
+    function generateUUID() {
+        return sprintf('%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff),
+            mt_rand(0, 0xffff),
+            mt_rand(0, 0x0fff) | 0x4000,
+            mt_rand(0, 0x3fff) | 0x8000,
+            mt_rand(0, 0xffff), mt_rand(0, 0xffff), mt_rand(0, 0xffff)
+        );
+    }
+}
 
+// ====== GİDER SİSTEMİ FONKSİYONLARI ======
+
+// Gider kategorilerini getir
+function getGiderKategorileri() {
+    global $pdo;
+    try {
+        $sql = "SELECT id, ad, aciklama FROM gider_kategorileri WHERE aktif = 1 ORDER BY ad";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Gider kategorileri getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Harcama türlerini getir
+function getHarcamaTurleri() {
+    global $pdo;
+    try {
+        $sql = "SELECT id, ad, aciklama FROM harcama_turleri WHERE aktif = 1 ORDER BY ad";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Harcama türleri getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Gider ekle
+function giderEkle($tarih, $kategori_id, $aciklama, $tutar, $harcama_turu_id, $fatura_no = null, $tedarikci = null, $notlar = null, $kayit_yapan_id = null) {
+    global $pdo;
+    try {
+        $gider_id = generateUUID();
+        
+        $sql = "INSERT INTO giderler (
+                    id, tarih, kategori_id, aciklama, tutar, 
+                    harcama_turu_id, odenmemis_kalan, fatura_no, 
+                    tedarikci, notlar, kayit_yapan_id
+                ) VALUES (
+                    :id, :tarih, :kategori_id, :aciklama, :tutar,
+                    :harcama_turu_id, :odenmemis_kalan, :fatura_no,
+                    :tedarikci, :notlar, :kayit_yapan_id
+                )";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            'id' => $gider_id,
+            'tarih' => $tarih,
+            'kategori_id' => $kategori_id,
+            'aciklama' => $aciklama,
+            'tutar' => $tutar,
+            'harcama_turu_id' => $harcama_turu_id,
+            'odenmemis_kalan' => $tutar, // Başlangıçta tüm tutar ödenmemiş
+            'fatura_no' => $fatura_no,
+            'tedarikci' => $tedarikci,
+            'notlar' => $notlar,
+            'kayit_yapan_id' => $kayit_yapan_id
+        ]);
+        
+        return $gider_id;
+    } catch(PDOException $e) {
+        error_log("Gider ekleme hatası: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+// Gider ödemesi ekle
+function giderOdemeEkle($gider_id, $odeme_tarihi, $tutar, $odeme_yontemi, $aciklama = null, $kayit_yapan_id = null) {
+    global $pdo;
+    try {
+        $odeme_id = generateUUID();
+        
+        $sql = "INSERT INTO gider_odemeleri (
+                    id, gider_id, odeme_tarihi, tutar,
+                    odeme_yontemi, aciklama, kayit_yapan_id
+                ) VALUES (
+                    :id, :gider_id, :odeme_tarihi, :tutar,
+                    :odeme_yontemi, :aciklama, :kayit_yapan_id
+                )";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            'id' => $odeme_id,
+            'gider_id' => $gider_id,
+            'odeme_tarihi' => $odeme_tarihi,
+            'tutar' => $tutar,
+            'odeme_yontemi' => $odeme_yontemi,
+            'aciklama' => $aciklama,
+            'kayit_yapan_id' => $kayit_yapan_id
+        ]);
+        
+        return $odeme_id;
+    } catch(PDOException $e) {
+        error_log("Gider ödeme ekleme hatası: " . $e->getMessage());
+        throw $e;
+    }
+}
+
+// Giderleri listele (filtreleme ile)
+function getGiderler($tarih_baslangic = null, $tarih_bitis = null, $kategori_id = null, $harcama_turu_id = null, $durum = null) {
+    global $pdo;
+    try {
+        $where_conditions = ["g.aktif = 1"];
+        $params = [];
+        
+        if ($tarih_baslangic) {
+            $where_conditions[] = "g.tarih >= :tarih_baslangic";
+            $params['tarih_baslangic'] = $tarih_baslangic;
+        }
+        
+        if ($tarih_bitis) {
+            $where_conditions[] = "g.tarih <= :tarih_bitis";
+            $params['tarih_bitis'] = $tarih_bitis;
+        }
+        
+        if ($kategori_id) {
+            $where_conditions[] = "g.kategori_id = :kategori_id";
+            $params['kategori_id'] = $kategori_id;
+        }
+        
+        if ($harcama_turu_id) {
+            $where_conditions[] = "g.harcama_turu_id = :harcama_turu_id";
+            $params['harcama_turu_id'] = $harcama_turu_id;
+        }
+        
+        if ($durum) {
+            $where_conditions[] = "g.durum = :durum";
+            $params['durum'] = $durum;
+        }
+        
+        $where_clause = implode(' AND ', $where_conditions);
+        
+        $sql = "SELECT 
+                    g.*,
+                    gk.ad as kategori_adi,
+                    ht.ad as harcama_turu_adi,
+                    CONCAT(p.ad, ' ', p.soyad) as kayit_yapan_adi,
+                    (SELECT SUM(tutar) FROM gider_odemeleri WHERE gider_id = g.id AND aktif = 1) as odenen_tutar
+                FROM giderler g
+                LEFT JOIN gider_kategorileri gk ON g.kategori_id = gk.id
+                LEFT JOIN harcama_turleri ht ON g.harcama_turu_id = ht.id
+                LEFT JOIN personel p ON g.kayit_yapan_id = p.id
+                WHERE {$where_clause}
+                ORDER BY g.tarih DESC, g.olusturma_tarihi DESC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Giderler getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Gider detayını getir (ödemeler ile birlikte)
+function getGiderDetay($gider_id) {
+    global $pdo;
+    try {
+        // Gider bilgisi
+        $sql = "SELECT 
+                    g.*,
+                    gk.ad as kategori_adi,
+                    ht.ad as harcama_turu_adi,
+                    CONCAT(p.ad, ' ', p.soyad) as kayit_yapan_adi
+                FROM giderler g
+                LEFT JOIN gider_kategorileri gk ON g.kategori_id = gk.id
+                LEFT JOIN harcama_turleri ht ON g.harcama_turu_id = ht.id
+                LEFT JOIN personel p ON g.kayit_yapan_id = p.id
+                WHERE g.id = :gider_id AND g.aktif = 1";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['gider_id' => $gider_id]);
+        $gider = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$gider) {
+            return null;
+        }
+        
+        // Ödemeler
+        $sql = "SELECT 
+                    go.*,
+                    CONCAT(p.ad, ' ', p.soyad) as kayit_yapan_adi
+                FROM gider_odemeleri go
+                LEFT JOIN personel p ON go.kayit_yapan_id = p.id
+                WHERE go.gider_id = :gider_id AND go.aktif = 1
+                ORDER BY go.odeme_tarihi DESC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['gider_id' => $gider_id]);
+        $odemeler = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        return [
+            'gider' => $gider,
+            'odemeler' => $odemeler
+        ];
+    } catch(PDOException $e) {
+        error_log("Gider detay getirme hatası: " . $e->getMessage());
+        return null;
+    }
+}
+
+// Gider güncelle
+function giderGuncelle($gider_id, $tarih, $kategori_id, $aciklama, $tutar, $harcama_turu_id, $fatura_no = null, $tedarikci = null, $notlar = null) {
+    global $pdo;
+    try {
+        $sql = "UPDATE giderler SET 
+                    tarih = :tarih,
+                    kategori_id = :kategori_id,
+                    aciklama = :aciklama,
+                    tutar = :tutar,
+                    harcama_turu_id = :harcama_turu_id,
+                    fatura_no = :fatura_no,
+                    tedarikci = :tedarikci,
+                    notlar = :notlar,
+                    guncelleme_tarihi = CURRENT_TIMESTAMP
+                WHERE id = :gider_id AND aktif = 1";
+        
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([
+            'gider_id' => $gider_id,
+            'tarih' => $tarih,
+            'kategori_id' => $kategori_id,
+            'aciklama' => $aciklama,
+            'tutar' => $tutar,
+            'harcama_turu_id' => $harcama_turu_id,
+            'fatura_no' => $fatura_no,
+            'tedarikci' => $tedarikci,
+            'notlar' => $notlar
+        ]);
+    } catch(PDOException $e) {
+        error_log("Gider güncelleme hatası: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Gider sil (soft delete)
+function giderSil($gider_id) {
+    global $pdo;
+    try {
+        $sql = "UPDATE giderler SET aktif = 0, guncelleme_tarihi = CURRENT_TIMESTAMP WHERE id = :gider_id";
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute(['gider_id' => $gider_id]);
+    } catch(PDOException $e) {
+        error_log("Gider silme hatası: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Aylık gider özetini getir
+function getAylikGiderOzeti($yil = null, $ay = null) {
+    global $pdo;
+    
+    if (!$yil) $yil = date('Y');
+    if (!$ay) $ay = date('m');
+    
+    try {
+        $sql = "SELECT 
+                    gk.ad as kategori,
+                    COUNT(g.id) as adet,
+                    SUM(g.tutar) as toplam_tutar,
+                    SUM(COALESCE((SELECT SUM(tutar) FROM gider_odemeleri WHERE gider_id = g.id AND aktif = 1), 0)) as odenen_tutar,
+                    SUM(g.odenmemis_kalan) as kalan_tutar
+                FROM giderler g
+                LEFT JOIN gider_kategorileri gk ON g.kategori_id = gk.id
+                WHERE g.aktif = 1 
+                AND YEAR(g.tarih) = :yil 
+                AND MONTH(g.tarih) = :ay
+                GROUP BY g.kategori_id, gk.ad
+                ORDER BY toplam_tutar DESC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['yil' => $yil, 'ay' => $ay]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Aylık gider özeti hatası: " . $e->getMessage());
+        return [];
+    }
+}
 
 
 
