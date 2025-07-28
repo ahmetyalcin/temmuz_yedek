@@ -14,7 +14,12 @@ try {
     
     $taksit_id = $_POST['taksit_id'];
     $odeme_tarihi = $_POST['odeme_tarihi'];
-    $odeme_tipi = $_POST['odeme_tipi'];
+    $odeme_turu_id = $_POST['odeme_turu_id']; // YENİ: odeme_tipi yerine odeme_turu_id
+    
+    // Validation
+    if (!$taksit_id || !$odeme_tarihi || !$odeme_turu_id) {
+        throw new Exception('Eksik parametreler');
+    }
     
     // Get installment details
     $sql = "SELECT satis_id, tutar FROM taksitler WHERE id = ? AND aktif = 1";
@@ -26,29 +31,37 @@ try {
         throw new Exception('Taksit bulunamadı');
     }
     
-    // Mark installment as paid
+    // Mark installment as paid - sadece odeme_turu_id kullan
     $sql = "UPDATE taksitler 
             SET odendi = 1,
                 odeme_tarihi = ?,
-                odeme_tipi = ?,
+                odeme_turu_id = ?,
                 guncelleme_tarihi = CURRENT_TIMESTAMP
             WHERE id = ? AND aktif = 1";
     
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([$odeme_tarihi, $odeme_tipi, $taksit_id]);
+    $stmt->execute([$odeme_tarihi, $odeme_turu_id, $taksit_id]);
     
-    // Add payment record
+    if ($stmt->rowCount() === 0) {
+        throw new Exception('Taksit güncellenemedi');
+    }
+    
+    // Add payment record - sadece odeme_turu_id kullan
+    $odeme_id = generateUUID();
     $sql = "INSERT INTO odemeler (
-                id, satis_id, tutar, odeme_tipi, odeme_tarihi
+                id, satis_id, tutar, odeme_turu_id, odeme_tarihi,
+                notlar, aktif, olusturma_tarihi
             ) VALUES (
-                UUID(), ?, ?, ?, ?
+                ?, ?, ?, ?, ?,
+                'Taksit ödemesi', 1, NOW()
             )";
             
     $stmt = $pdo->prepare($sql);
     $stmt->execute([
+        $odeme_id,
         $taksit['satis_id'],
         $taksit['tutar'],
-        $odeme_tipi,
+        $odeme_turu_id,
         $odeme_tarihi
     ]);
     
@@ -76,10 +89,13 @@ try {
         'success' => true,
         'message' => 'Ödeme başarıyla kaydedildi'
     ]);
+    
 } catch(Exception $e) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
+    
+    error_log("Taksit ödeme hatası: " . $e->getMessage());
     echo json_encode([
         'success' => false,
         'message' => 'Hata: ' . $e->getMessage()

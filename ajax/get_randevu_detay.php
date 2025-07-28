@@ -31,9 +31,14 @@ try {
     }
     
     // Get payments
-    $sql = "SELECT * FROM odemeler 
-            WHERE satis_id = :satis_id AND aktif = 1 
-            ORDER BY odeme_tarihi DESC";
+ $sql = "SELECT o.*, 
+               ot.ad as odeme_turu_adi,
+               ot.kod as odeme_turu_kodu,
+               ot.aciklama as odeme_turu_aciklama
+        FROM odemeler o
+        LEFT JOIN odeme_turleri ot ON o.odeme_turu_id = ot.id
+        WHERE o.satis_id = :satis_id AND o.aktif = 1 
+        ORDER BY o.odeme_tarihi DESC";
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute(['satis_id' => $_GET['id']]);

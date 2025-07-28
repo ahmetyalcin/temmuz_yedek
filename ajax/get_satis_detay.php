@@ -9,17 +9,22 @@ if (!isset($_GET['id'])) {
 }
 
 try {
-    // Get sale details
+    // Get sale details with sales type
     $sql = "SELECT s.*, 
                    CONCAT(d.ad, ' ', d.soyad) as danisan_adi,
                    st.ad as paket_adi,
                    st.evaluation_interval,
+                   st.seans_adet,
                    CONCAT(p.ad, ' ', p.soyad) as personel_adi,
+                   satis_t.ad as satis_turu_adi,
+                   odeme_t.ad as odeme_turu_adi,
                    (SELECT COALESCE(SUM(tutar), 0) FROM odemeler WHERE satis_id = s.id AND aktif = 1) as toplam_odenen
             FROM satislar s
             JOIN danisanlar d ON d.id = s.danisan_id
             JOIN seans_turleri st ON st.id = s.hizmet_paketi_id
             JOIN personel p ON p.id = s.personel_id
+            LEFT JOIN satis_turleri satis_t ON satis_t.id = s.satis_turu_id
+            LEFT JOIN odeme_turleri odeme_t ON odeme_t.id = s.odeme_turu_id
             WHERE s.id = :satis_id AND s.aktif = 1";
     
     $stmt = $pdo->prepare($sql);
@@ -31,23 +36,32 @@ try {
         exit;
     }
     
-    // Get payments
-    $sql = "SELECT * FROM odemeler 
-            WHERE satis_id = :satis_id AND aktif = 1 
-            ORDER BY odeme_tarihi DESC";
+    // Get payments with payment type details
+    $sql = "SELECT o.*, 
+                   ot.ad as odeme_turu_adi,
+                   ot.kod as odeme_turu_kodu,
+                   ot.aciklama as odeme_turu_aciklama
+            FROM odemeler o
+            LEFT JOIN odeme_turleri ot ON o.odeme_turu_id = ot.id
+            WHERE o.satis_id = :satis_id AND o.aktif = 1 
+            ORDER BY o.odeme_tarihi DESC";
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute(['satis_id' => $_GET['id']]);
     $odemeler = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Get installments
+    // Get installments with payment type details
     $sql = "SELECT t.*,
+                   ot.ad as odeme_turu_adi,
+                   ot.kod as odeme_turu_kodu,
+                   ot.aciklama as odeme_turu_aciklama,
                    CASE 
-                       WHEN odendi = 0 AND vade_tarihi < CURDATE() THEN 'gecikmiş'
-                       WHEN odendi = 0 AND vade_tarihi >= CURDATE() THEN 'gelecek'
+                       WHEN t.odendi = 0 AND t.vade_tarihi < CURDATE() THEN 'gecikmiş'
+                       WHEN t.odendi = 0 AND t.vade_tarihi >= CURDATE() THEN 'gelecek'
                        ELSE 'ödendi'
                    END as durum_tipi
             FROM taksitler t
+            LEFT JOIN odeme_turleri ot ON t.odeme_turu_id = ot.id
             WHERE t.satis_id = :satis_id 
             AND t.aktif = 1 
             ORDER BY t.vade_tarihi ASC";
@@ -67,7 +81,7 @@ try {
                            ORDER BY r.randevu_tarihi ASC
                        ) as session_number
                 FROM randevular r
-                JOIN personel p ON p.id = r.personel_id
+                LEFT JOIN personel p ON p.id = r.personel_id
                 LEFT JOIN rooms rm ON rm.id = r.room_id
                 JOIN satislar s ON s.id = r.satis_id
                 JOIN seans_turleri st ON st.id = s.hizmet_paketi_id
@@ -101,12 +115,26 @@ try {
     $stmt->execute(['satis_id' => $_GET['id']]);
     $randevular = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
+    // Get payment types for frontend
+    $sql = "SELECT id, kod, ad, aciklama FROM odeme_turleri WHERE aktif = 1 ORDER BY ad";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute();
+    $odeme_turleri = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Get sales types for frontend
+    $sql = "SELECT id, ad, aciklama FROM satis_turleri WHERE aktif = 1 ORDER BY ad";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute();
+    $satis_turleri = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
     echo json_encode([
         'success' => true,
         'satis' => $satis,
         'odemeler' => $odemeler,
         'taksitler' => $taksitler,
-        'randevular' => $randevular
+        'randevular' => $randevular,
+        'odeme_turleri' => $odeme_turleri,
+        'satis_turleri' => $satis_turleri
     ]);
     
 } catch(PDOException $e) {
