@@ -1197,7 +1197,7 @@ function updateSatisDurum($satis_id) {
     }
 }
 
-function getSatislar() {
+function getSatislar11() {
     global $pdo;
     try {
         $sql = "SELECT s.*, 
@@ -1223,7 +1223,32 @@ function getSatislar() {
     }
 }
 
-
+function getSatislar() {
+    global $pdo;
+    try {
+        $sql = "SELECT s.*, 
+                       s.faturalandi,  -- Faturalama durumu kolonu eklendi
+                       CONCAT(d.ad, ' ', d.soyad) as danisan_adi,
+                       st.ad as paket_adi,
+                       st.seans_adet,
+                       CONCAT(p.ad, ' ', p.soyad) as personel_adi,
+                       (SELECT MAX(odeme_tarihi) FROM odemeler WHERE satis_id = s.id AND aktif = 1) as son_odeme_tarihi,
+                       (SELECT COUNT(*) FROM taksitler WHERE satis_id = s.id AND aktif = 1 AND odendi = 0) as odenmemis_taksit_sayisi,
+                       (SELECT COALESCE(SUM(tutar), 0) FROM odemeler WHERE satis_id = s.id AND aktif = 1) as toplam_odenen
+                FROM satislar s
+                JOIN danisanlar d ON d.id = s.danisan_id
+                JOIN seans_turleri st ON st.id = s.hizmet_paketi_id
+                JOIN personel p ON p.id = s.personel_id
+                WHERE s.aktif = 1
+                ORDER BY s.olusturma_tarihi DESC";
+        
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Satış listesi getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
 
 
 
@@ -2782,6 +2807,1358 @@ function getAylikGiderOzeti($yil = null, $ay = null) {
         error_log("Aylık gider özeti hatası: " . $e->getMessage());
         return [];
     }
+}
+
+
+
+// İzin Yönetimi Fonksiyonları
+function getPersoneller() {
+    global $pdo;
+    try {
+        $sql = "SELECT id, ad, soyad, sicil_no, avatar FROM personel WHERE aktif = 1 ORDER BY ad, soyad";
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Personel listesi hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getIzinTurleri() {
+    global $pdo;
+    try {
+        $sql = "SELECT * FROM izin_turleri WHERE aktif = 1 ORDER BY ad";
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("İzin türleri hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getBekleyenIzinler() {
+    global $pdo;
+    try {
+        $sql = "SELECT pi.*, 
+                       CONCAT(p.ad, ' ', p.soyad) as personel_adi,
+                       p.sicil_no,
+                       p.avatar,
+                       it.ad as izin_turu_adi,
+                       it.renk_kodu,
+                       it.ucretli
+                FROM personel_izinleri pi
+                JOIN personel p ON p.id = pi.personel_id
+                JOIN izin_turleri it ON it.id = pi.izin_turu_id
+                WHERE pi.durum = 'beklemede' AND pi.aktif = 1
+                ORDER BY pi.olusturma_tarihi DESC";
+        
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Bekleyen izinler hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getOnaylananIzinler() {
+    global $pdo;
+    try {
+        $sql = "SELECT pi.*, 
+                       CONCAT(p.ad, ' ', p.soyad) as personel_adi,
+                       p.sicil_no,
+                       p.avatar,
+                       it.ad as izin_turu_adi,
+                       it.renk_kodu,
+                       it.ucretli
+                FROM personel_izinleri pi
+                JOIN personel p ON p.id = pi.personel_id
+                JOIN izin_turleri it ON it.id = pi.izin_turu_id
+                WHERE pi.durum = 'onaylandi' 
+                AND pi.aktif = 1
+                AND MONTH(pi.baslangic_tarihi) = MONTH(CURDATE())
+                AND YEAR(pi.baslangic_tarihi) = YEAR(CURDATE())
+                ORDER BY pi.baslangic_tarihi DESC";
+        
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Onaylanan izinler hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getBugunkuIzinliSayisi() {
+    global $pdo;
+    try {
+        $sql = "SELECT COUNT(DISTINCT personel_id) 
+                FROM personel_izinleri 
+                WHERE durum = 'onaylandi' 
+                AND CURDATE() BETWEEN baslangic_tarihi AND bitis_tarihi
+                AND aktif = 1";
+        
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchColumn() ?: 0;
+    } catch(PDOException $e) {
+        error_log("Bugünkü izinli sayısı hatası: " . $e->getMessage());
+        return 0;
+    }
+}
+
+// Bordro Yönetimi Fonksiyonları
+function getPersonellerWithMaas() {
+    global $pdo;
+    try {
+        $sql = "SELECT p.*, pmb.brut_maas, pmb.banka_adi, pmb.iban
+                FROM personel p
+                LEFT JOIN personel_maas_bilgileri pmb ON pmb.personel_id = p.id AND pmb.aktif = 1
+                WHERE p.aktif = 1
+                ORDER BY p.ad, p.soyad";
+        
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Maaşlı personel listesi hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getBordrolar($ay, $yil) {
+    global $pdo;
+    try {
+        $sql = "SELECT b.*, 
+                       CONCAT(p.ad, ' ', p.soyad) as personel_adi,
+                       p.sicil_no
+                FROM bordrolar b
+                JOIN personel p ON p.id = b.personel_id
+                WHERE b.ay = ? AND b.yil = ? AND b.aktif = 1
+                ORDER BY p.ad, p.soyad";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$ay, $yil]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Bordro listesi hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getBordroIstatistik($ay, $yil) {
+    global $pdo;
+    try {
+        // Toplam personel sayısı
+        $toplam_personel_sql = "SELECT COUNT(*) FROM personel WHERE aktif = 1";
+        $stmt = $pdo->query($toplam_personel_sql);
+        $toplam_personel = $stmt->fetchColumn();
+        
+        // Bordro durumları
+        $sql = "SELECT 
+                    durum,
+                    COUNT(*) as adet,
+                    SUM(net_odeme) as toplam_net
+                FROM bordrolar 
+                WHERE ay = ? AND yil = ? AND aktif = 1
+                GROUP BY durum";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$ay, $yil]);
+        $durumlar = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $istatistik = [
+            'toplam_personel' => $toplam_personel,
+            'taslak_bordro' => 0,
+            'onaylanan_bordro' => 0,
+            'odenen_bordro' => 0,
+            'toplam_net' => 0
+        ];
+        
+        foreach ($durumlar as $durum) {
+            if ($durum['durum'] == 'taslak') {
+                $istatistik['taslak_bordro'] = $durum['adet'];
+            } elseif ($durum['durum'] == 'onaylandi') {
+                $istatistik['onaylanan_bordro'] = $durum['adet'];
+            } elseif ($durum['durum'] == 'odendi') {
+                $istatistik['odenen_bordro'] = $durum['adet'];
+            }
+            $istatistik['toplam_net'] += $durum['toplam_net'];
+        }
+        
+        return $istatistik;
+    } catch(PDOException $e) {
+        error_log("Bordro istatistik hatası: " . $e->getMessage());
+        return [
+            'toplam_personel' => 0,
+            'taslak_bordro' => 0,
+            'onaylanan_bordro' => 0,
+            'odenen_bordro' => 0,
+            'toplam_net' => 0
+        ];
+    }
+}
+
+function createBordro($personel_id, $ay, $yil) {
+    global $pdo;
+    try {
+        // Personel maaş bilgilerini al
+        $maas_sql = "SELECT * FROM personel_maas_bilgileri WHERE personel_id = ? AND aktif = 1";
+        $maas_stmt = $pdo->prepare($maas_sql);
+        $maas_stmt->execute([$personel_id]);
+        $maas_bilgi = $maas_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$maas_bilgi) {
+            throw new Exception("Personel maaş bilgisi bulunamadı");
+        }
+        
+        // İzin günlerini hesapla
+        $izin_sql = "SELECT 
+                        SUM(CASE WHEN it.ucretli = 1 THEN pi.gun_sayisi ELSE 0 END) as ucretli_izin,
+                        SUM(CASE WHEN it.ucretli = 0 THEN pi.gun_sayisi ELSE 0 END) as ucretsiz_izin
+                     FROM personel_izinleri pi
+                     JOIN izin_turleri it ON it.id = pi.izin_turu_id
+                     WHERE pi.personel_id = ? 
+                     AND pi.durum = 'onaylandi'
+                     AND MONTH(pi.baslangic_tarihi) = ? 
+                     AND YEAR(pi.baslangic_tarihi) = ?";
+        
+        $izin_stmt = $pdo->prepare($izin_sql);
+        $izin_stmt->execute([$personel_id, $ay, $yil]);
+        $izin_bilgi = $izin_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $ucretli_izin = $izin_bilgi['ucretli_izin'] ?: 0;
+        $ucretsiz_izin = $izin_bilgi['ucretsiz_izin'] ?: 0;
+        $calisan_gun = 30 - $ucretsiz_izin; // Ücretsiz izin günlerini çalışma gününden çıkar
+        
+        // Bordro hesaplamaları
+        $brut_maas = $maas_bilgi['brut_maas'];
+        $prim_tutari = $maas_bilgi['sabit_prim'];
+        $yemek_yardimi = $maas_bilgi['yemek_yardimi'];
+        $brut_toplam = $brut_maas + $prim_tutari + $yemek_yardimi;
+        
+        // Kesintiler (sistem ayarlarından al)
+        $sgk_oran = getSistemAyari('bordro', 'sgk_isci_payi', 14.0);
+        $issizlik_oran = getSistemAyari('bordro', 'issizlik_isci_payi', 1.0);
+        $damga_oran = getSistemAyari('bordro', 'damga_vergisi', 0.759);
+        
+        $sgk_kesinti = ($brut_toplam * $sgk_oran) / 100;
+        $issizlik_kesinti = ($brut_toplam * $issizlik_oran) / 100;
+        $damga_vergisi = ($brut_toplam * $damga_oran) / 100;
+        
+        // Gelir vergisi hesaplama (basitleştirilmiş)
+        $vergi_matrah = $brut_toplam - $sgk_kesinti - $issizlik_kesinti;
+        $gelir_vergisi = calculateGelirVergisi($vergi_matrah);
+        
+        $toplam_kesinti = $sgk_kesinti + $issizlik_kesinti + $gelir_vergisi + $damga_vergisi;
+        $net_odeme = $brut_toplam - $toplam_kesinti;
+        
+        // Bordroyu kaydet
+        $bordro_id = generateUUID();
+        $bordro_sql = "INSERT INTO bordrolar 
+                       (id, personel_id, ay, yil, brut_maas, prim_tutari, yemek_yardimi, 
+                        brut_toplam, sgk_isci_payi, issizlik_isci_payi, gelir_vergisi, 
+                        damga_vergisi, toplam_kesinti, net_odeme, calisan_gun_sayisi, 
+                        ucretli_izin_gun, ucretsiz_izin_gun, olusturan_id)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        
+        $stmt = $pdo->prepare($bordro_sql);
+        $success = $stmt->execute([
+            $bordro_id, $personel_id, $ay, $yil, $brut_maas, $prim_tutari, $yemek_yardimi,
+            $brut_toplam, $sgk_kesinti, $issizlik_kesinti, $gelir_vergisi,
+            $damga_vergisi, $toplam_kesinti, $net_odeme, $calisan_gun,
+            $ucretli_izin, $ucretsiz_izin, $_SESSION['user_id']
+        ]);
+        
+        return $success ? $bordro_id : false;
+        
+    } catch(Exception $e) {
+        error_log("Bordro oluşturma hatası: " . $e->getMessage());
+        return false;
+    }
+}
+
+function createAllBordrolar($ay, $yil) {
+    $personeller = getPersonellerWithMaas();
+    $success_count = 0;
+    
+    foreach ($personeller as $personel) {
+        if ($personel['brut_maas'] > 0) {
+            // Mevcut bordro var mı kontrol et
+            if (!bordroExists($personel['id'], $ay, $yil)) {
+                if (createBordro($personel['id'], $ay, $yil)) {
+                    $success_count++;
+                }
+            }
+        }
+    }
+    
+    return $success_count;
+}
+
+function bordroExists($personel_id, $ay, $yil) {
+    global $pdo;
+    try {
+        $sql = "SELECT COUNT(*) FROM bordrolar WHERE personel_id = ? AND ay = ? AND yil = ? AND aktif = 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$personel_id, $ay, $yil]);
+        return $stmt->fetchColumn() > 0;
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+function approveBordro($bordro_id) {
+    global $pdo;
+    try {
+        $sql = "UPDATE bordrolar 
+                SET durum = 'onaylandi', 
+                    onaylayan_id = ?, 
+                    onay_tarihi = NOW() 
+                WHERE id = ?";
+        
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([$_SESSION['user_id'], $bordro_id]);
+    } catch(PDOException $e) {
+        error_log("Bordro onaylama hatası: " . $e->getMessage());
+        return false;
+    }
+}
+
+function calculateGelirVergisi($matrah) {
+    // Basitleştirilmiş gelir vergisi hesabı
+    $gvk_1_dilim = getSistemAyari('bordro', 'gvk_1_dilim', 110000);
+    $gvk_1_oran = getSistemAyari('bordro', 'gvk_1_oran', 15);
+    $gvk_2_oran = getSistemAyari('bordro', 'gvk_2_oran', 20);
+    
+    if ($matrah <= $gvk_1_dilim) {
+        return ($matrah * $gvk_1_oran) / 100;
+    } else {
+        $birinci_dilim_vergi = ($gvk_1_dilim * $gvk_1_oran) / 100;
+        $ikinci_dilim_vergi = (($matrah - $gvk_1_dilim) * $gvk_2_oran) / 100;
+        return $birinci_dilim_vergi + $ikinci_dilim_vergi;
+    }
+}
+
+function getSistemAyari($kategori, $anahtar, $varsayilan = null) {
+    global $pdo;
+    try {
+        $sql = "SELECT deger FROM sistem_ayarlari WHERE kategori = ? AND anahtar = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$kategori, $anahtar]);
+        $result = $stmt->fetchColumn();
+        
+        return $result !== false ? $result : $varsayilan;
+    } catch(PDOException $e) {
+        return $varsayilan;
+    }
+}
+
+function getAylikIzinOzeti($ay, $yil) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    SUM(CASE WHEN it.ucretli = 1 THEN pi.gun_sayisi ELSE 0 END) as ucretli,
+                    SUM(CASE WHEN it.ucretli = 0 THEN pi.gun_sayisi ELSE 0 END) as ucretsiz,
+                    SUM(pi.gun_sayisi) as toplam_gun
+                FROM personel_izinleri pi
+                JOIN izin_turleri it ON it.id = pi.izin_turu_id
+                WHERE pi.durum = 'onaylandi'
+                AND MONTH(pi.baslangic_tarihi) = ?
+                AND YEAR(pi.baslangic_tarihi) = ?
+                AND pi.aktif = 1";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$ay, $yil]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        return [
+            'ucretli' => $result['ucretli'] ?: 0,
+            'ucretsiz' => $result['ucretsiz'] ?: 0,
+            'toplam_gun' => $result['toplam_gun'] ?: 0
+        ];
+    } catch(PDOException $e) {
+        error_log("Aylık izin özeti hatası: " . $e->getMessage());
+        return ['ucretli' => 0, 'ucretsiz' => 0, 'toplam_gun' => 0];
+    }
+}
+
+// Personel maaş bilgisi ekleme/güncelleme
+function updatePersonelMaasBilgisi($personel_id, $brut_maas, $prim_yuzdesi = 0, $sabit_prim = 0, 
+                                   $yemek_yardimi = 0, $banka_adi = '', $iban = '') {
+    global $pdo;
+    try {
+        // Mevcut aktif kaydı pasif yap
+        $deactivate_sql = "UPDATE personel_maas_bilgileri SET aktif = 0 WHERE personel_id = ? AND aktif = 1";
+        $pdo->prepare($deactivate_sql)->execute([$personel_id]);
+        
+        // Yeni kayıt ekle
+        $sql = "INSERT INTO personel_maas_bilgileri 
+                (personel_id, brut_maas, prim_yuzdesi, sabit_prim, yemek_yardimi, 
+                 banka_adi, iban, baslangic_tarihi) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE())";
+        
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([
+            $personel_id, $brut_maas, $prim_yuzdesi, $sabit_prim, 
+            $yemek_yardimi, $banka_adi, $iban
+        ]);
+    } catch(PDOException $e) {
+        error_log("Maaş bilgisi güncelleme hatası: " . $e->getMessage());
+        return false;
+    }
+}
+
+// İzin bakiye güncelleme
+function updateIzinBakiye($personel_id, $yil, $izin_turu_id, $kullanilan_gun) {
+    global $pdo;
+    try {
+        $sql = "INSERT INTO personel_izin_bakiye (personel_id, yil, izin_turu_id, kullanilan, kalan)
+                VALUES (?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                kullanilan = kullanilan + VALUES(kullanilan),
+                kalan = yillik_hak - kullanilan";
+        
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([$personel_id, $yil, $izin_turu_id, $kullanilan_gun, 0]);
+    } catch(PDOException $e) {
+        error_log("İzin bakiye güncelleme hatası: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Personel çalışma saatleri kaydetme
+function kaydetGirisCikis($personel_id, $tarih, $giris_saati = null, $cikis_saati = null, $aciklama = '') {
+    global $pdo;
+    try {
+        $id = generateUUID();
+        $toplam_saat = 0;
+        $durum = 'normal';
+        
+        if ($giris_saati && $cikis_saati) {
+            $giris = new DateTime($giris_saati);
+            $cikis = new DateTime($cikis_saati);
+            $fark = $cikis->diff($giris);
+            $toplam_saat = $fark->h + ($fark->i / 60);
+            
+            // Geç gelme kontrolü (09:00'dan sonra)
+            if ($giris->format('H:i') > '09:00') {
+                $durum = 'gecikme';
+            }
+            
+            // Erken çıkış kontrolü (18:00'dan önce)
+            if ($cikis->format('H:i') < '18:00') {
+                $durum = 'erken_cikis';
+            }
+        }
+        
+        $sql = "INSERT INTO personel_giris_cikis 
+                (id, personel_id, tarih, giris_saati, cikis_saati, toplam_calisma_saati, 
+                 durum, aciklama, kayit_tipi, kaydeden_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'manuel', ?)
+                ON DUPLICATE KEY UPDATE
+                giris_saati = VALUES(giris_saati),
+                cikis_saati = VALUES(cikis_saati),
+                toplam_calisma_saati = VALUES(toplam_calisma_saati),
+                durum = VALUES(durum),
+                aciklama = VALUES(aciklama),
+                guncelleme_tarihi = CURRENT_TIMESTAMP";
+        
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([
+            $id, $personel_id, $tarih, $giris_saati, $cikis_saati, 
+            $toplam_saat, $durum, $aciklama, $_SESSION['user_id']
+        ]);
+    } catch(PDOException $e) {
+        error_log("Giriş/çıkış kaydetme hatası: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Personel performans raporu
+function getPersonelPerformansRaporu($personel_id, $baslangic_tarih, $bitis_tarih) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    COUNT(*) as toplam_gun,
+                    SUM(toplam_calisma_saati) as toplam_saat,
+                    AVG(toplam_calisma_saati) as ortalama_saat,
+                    SUM(CASE WHEN durum = 'gecikme' THEN 1 ELSE 0 END) as gecikme_sayisi,
+                    SUM(CASE WHEN durum = 'erken_cikis' THEN 1 ELSE 0 END) as erken_cikis_sayisi,
+                    SUM(gecikme_dakika) as toplam_gecikme_dakika
+                FROM personel_giris_cikis 
+                WHERE personel_id = ? 
+                AND tarih BETWEEN ? AND ?";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$personel_id, $baslangic_tarih, $bitis_tarih]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Performans raporu hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Departman bazlı maaş özeti
+function getDepartmanMaasOzeti($ay, $yil) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    p.rol as departman,
+                    COUNT(*) as personel_sayisi,
+                    SUM(b.brut_toplam) as toplam_brut,
+                    SUM(b.toplam_kesinti) as toplam_kesinti,
+                    SUM(b.net_odeme) as toplam_net,
+                    AVG(b.net_odeme) as ortalama_net
+                FROM bordrolar b
+                JOIN personel p ON p.id = b.personel_id
+                WHERE b.ay = ? AND b.yil = ? AND b.aktif = 1
+                GROUP BY p.rol
+                ORDER BY toplam_net DESC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$ay, $yil]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Departman maaş özeti hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Bordro email gönderme
+function sendBordroEmail($bordro_id) {
+    global $pdo;
+    try {
+        // Bordro bilgilerini al
+        $sql = "SELECT b.*, 
+                       CONCAT(p.ad, ' ', p.soyad) as personel_adi,
+                       p.email
+                FROM bordrolar b
+                JOIN personel p ON p.id = b.personel_id
+                WHERE b.id = ? AND b.durum = 'onaylandi'";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$bordro_id]);
+        $bordro = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$bordro || !$bordro['email']) {
+            return false;
+        }
+        
+        // Email içeriği hazırla
+        $aylar = [
+            '01' => 'Ocak', '02' => 'Şubat', '03' => 'Mart', '04' => 'Nisan',
+            '05' => 'Mayıs', '06' => 'Haziran', '07' => 'Temmuz', '08' => 'Ağustos',
+            '09' => 'Eylül', '10' => 'Ekim', '11' => 'Kasım', '12' => 'Aralık'
+        ];
+        
+        $ay_adi = $aylar[sprintf('%02d', $bordro['ay'])];
+        
+        $subject = "TheraVita - {$ay_adi} {$bordro['yil']} Bordronuz";
+        
+        $message = "
+        <h2>Sayın {$bordro['personel_adi']},</h2>
+        <p>{$ay_adi} {$bordro['yil']} ayına ait bordronuz hazır.</p>
+        
+        <table border='1' style='border-collapse: collapse; width: 100%;'>
+            <tr><td><strong>Brüt Maaş:</strong></td><td>" . number_format($bordro['brut_maas'], 2) . " ₺</td></tr>
+            <tr><td><strong>Primler:</strong></td><td>" . number_format($bordro['prim_tutari'], 2) . " ₺</td></tr>
+            <tr><td><strong>Yemek Yardımı:</strong></td><td>" . number_format($bordro['yemek_yardimi'], 2) . " ₺</td></tr>
+            <tr><td><strong>Brüt Toplam:</strong></td><td>" . number_format($bordro['brut_toplam'], 2) . " ₺</td></tr>
+            <tr><td><strong>Kesintiler:</strong></td><td>" . number_format($bordro['toplam_kesinti'], 2) . " ₺</td></tr>
+            <tr style='background-color: #f0f0f0;'><td><strong>Net Ödeme:</strong></td><td><strong>" . number_format($bordro['net_odeme'], 2) . " ₺</strong></td></tr>
+        </table>
+        
+        <p><small>Detaylı bordronuz için insan kaynakları departmanı ile iletişime geçebilirsiniz.</small></p>
+        ";
+        
+        // Email gönderme (PHPMailer veya mail() fonksiyonu kullanılabilir)
+        $headers = "MIME-Version: 1.0" . "\r\n";
+        $headers .= "Content-type:text/html;charset=UTF-8" . "\r\n";
+        $headers .= "From: noreply@theravita.com" . "\r\n";
+        
+        return mail($bordro['email'], $subject, $message, $headers);
+        
+    } catch(Exception $e) {
+        error_log("Bordro email gönderme hatası: " . $e->getMessage());
+        return false;
+    }
+}
+
+// Yıllık izin hakkı hesaplama
+function calculateYillikIzinHakki($personel_id, $yil) {
+    global $pdo;
+    try {
+        // Personelin işe başlama tarihini al
+        $sql = "SELECT olusturma_tarihi FROM personel WHERE id = ?";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$personel_id]);
+        $baslama_tarihi = $stmt->fetchColumn();
+        
+        if (!$baslama_tarihi) {
+            return 14; // Varsayılan
+        }
+        
+        // Çalışma yılını hesapla
+        $baslama = new DateTime($baslama_tarihi);
+        $yil_sonu = new DateTime("{$yil}-12-31");
+        $calisma_yili = $baslama->diff($yil_sonu)->y;
+        
+        // İzin hakkı hesaplama (Türk İş Kanunu'na göre)
+        if ($calisma_yili < 1) {
+            return 0;
+        } elseif ($calisma_yili < 5) {
+            return 14; // 14 gün
+        } elseif ($calisma_yili < 15) {
+            return 20; // 20 gün
+        } else {
+            return 26; // 26 gün
+        }
+    } catch(Exception $e) {
+        error_log("Yıllık izin hakkı hesaplama hatası: " . $e->getMessage());
+        return 14;
+    }
+}
+
+// İzin bakiyelerini güncelle (yıl başında çalıştırılacak)
+function updateAllIzinBakiyeleri($yil) {
+    global $pdo;
+    try {
+        $personeller = getPersoneller();
+        $success_count = 0;
+        
+        foreach ($personeller as $personel) {
+            $yillik_hak = calculateYillikIzinHakki($personel['id'], $yil);
+            
+            // Yıllık izin bakiyesini güncelle
+            $sql = "INSERT INTO personel_izin_bakiye (personel_id, yil, izin_turu_id, yillik_hak, kalan)
+                    VALUES (?, ?, 1, ?, ?) 
+                    ON DUPLICATE KEY UPDATE 
+                    yillik_hak = VALUES(yillik_hak),
+                    kalan = VALUES(yillik_hak) - kullanilan";
+            
+            $stmt = $pdo->prepare($sql);
+            if ($stmt->execute([$personel['id'], $yil, $yillik_hak, $yillik_hak])) {
+                $success_count++;
+            }
+        }
+        
+        return $success_count;
+    } catch(Exception $e) {
+        error_log("Toplu izin bakiye güncelleme hatası: " . $e->getMessage());
+        return 0;
+    }
+}
+
+// Bordro Excel export için veri hazırlama
+function prepareBordroExcelData($ay, $yil) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    CONCAT(p.ad, ' ', p.soyad) as ad_soyad,
+                    p.sicil_no,
+                    b.brut_maas,
+                    b.prim_tutari,
+                    b.yemek_yardimi,
+                    b.brut_toplam,
+                    b.sgk_isci_payi,
+                    b.issizlik_isci_payi,
+                    b.gelir_vergisi,
+                    b.damga_vergisi,
+                    b.toplam_kesinti,
+                    b.net_odeme,
+                    b.calisan_gun_sayisi,
+                    b.ucretli_izin_gun,
+                    b.ucretsiz_izin_gun,
+                    pmb.banka_adi,
+                    pmb.iban
+                FROM bordrolar b
+                JOIN personel p ON p.id = b.personel_id
+                LEFT JOIN personel_maas_bilgileri pmb ON pmb.personel_id = b.personel_id AND pmb.aktif = 1
+                WHERE b.ay = ? AND b.yil = ? AND b.aktif = 1
+                ORDER BY p.ad, p.soyad";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$ay, $yil]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Excel veri hazırlama hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+
+function getPersonelIzinDurumlari($yil) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    p.id as personel_id,
+                    p.ad,
+                    p.soyad,
+                    CONCAT(p.ad, ' ', p.soyad) as personel_adi,
+                    p.sicil_no,
+                    p.avatar,
+                    p.rol as departman,
+                    p.olusturma_tarihi as ise_baslama,
+                    TIMESTAMPDIFF(YEAR, p.olusturma_tarihi, CURDATE()) as calisma_yili,
+                    COALESCE(pib.yillik_hak, 0) as yillik_hak,
+                    COALESCE(pib.kullanilan, 0) as kullanilan,
+                    COALESCE(pib.kalan, 0) as kalan,
+                    COALESCE(pib.devredilen, 0) as devredilen
+                FROM personel p
+                LEFT JOIN personel_izin_bakiye pib ON pib.personel_id = p.id 
+                    AND pib.yil = ? AND pib.izin_turu_id = 1
+                WHERE p.aktif = 1
+                ORDER BY p.ad, p.soyad";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$yil]);
+        $sonuclar = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // İzin hakkı hesaplanmamış olanları hesapla
+        foreach ($sonuclar as &$sonuc) {
+            if ($sonuc['yillik_hak'] == 0) {
+                $sonuc['yillik_hak'] = calculateYillikIzinHakki($sonuc['personel_id'], $yil);
+                $sonuc['kalan'] = $sonuc['yillik_hak'] - $sonuc['kullanilan'];
+            }
+        }
+        
+        return $sonuclar;
+    } catch(PDOException $e) {
+        error_log("İzin durumları getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getIzinIstatistikleri($yil) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    COUNT(DISTINCT p.id) as toplam_personel,
+                    COALESCE(SUM(pib.yillik_hak), 0) as toplam_hak,
+                    COALESCE(SUM(pib.kullanilan), 0) as kullanilan,
+                    COALESCE(SUM(pib.kalan), 0) as kalan,
+                    COALESCE(AVG(pib.kullanilan * 100.0 / NULLIF(pib.yillik_hak, 0)), 0) as ortalama_kullanim,
+                    COUNT(CASE WHEN pib.kalan < (pib.yillik_hak * 0.2) THEN 1 END) as kritik_personel
+                FROM personel p
+                LEFT JOIN personel_izin_bakiye pib ON pib.personel_id = p.id 
+                    AND pib.yil = ? AND pib.izin_turu_id = 1
+                WHERE p.aktif = 1";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$yil]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("İzin istatistikleri hatası: " . $e->getMessage());
+        return [
+            'toplam_personel' => 0,
+            'toplam_hak' => 0,
+            'kullanilan' => 0,
+            'kalan' => 0,
+            'ortalama_kullanim' => 0,
+            'kritik_personel' => 0
+        ];
+    }
+}
+
+function updateAllIzinHakki($yil) {
+    global $pdo;
+    try {
+        $personeller = getPersoneller();
+        $guncellenen = 0;
+        
+        foreach ($personeller as $personel) {
+            $yillik_hak = calculateYillikIzinHakki($personel['id'], $yil);
+            
+            // Mevcut kullanılan izni al
+            $kullanilan_sql = "SELECT COALESCE(SUM(gun_sayisi), 0) 
+                              FROM personel_izinleri pi
+                              JOIN izin_turleri it ON it.id = pi.izin_turu_id
+                              WHERE pi.personel_id = ? 
+                              AND YEAR(pi.baslangic_tarihi) = ?
+                              AND pi.durum = 'onaylandi'
+                              AND it.id = 1"; // Yıllık izin
+            
+            $stmt = $pdo->prepare($kullanilan_sql);
+            $stmt->execute([$personel['id'], $yil]);
+            $kullanilan = $stmt->fetchColumn() ?: 0;
+            
+            // Bakiyeyi güncelle
+            $sql = "INSERT INTO personel_izin_bakiye 
+                    (personel_id, yil, izin_turu_id, yillik_hak, kullanilan, kalan)
+                    VALUES (?, ?, 1, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE 
+                    yillik_hak = VALUES(yillik_hak),
+                    kullanilan = VALUES(kullanilan),
+                    kalan = VALUES(yillik_hak) - VALUES(kullanilan)";
+            
+            $stmt = $pdo->prepare($sql);
+            if ($stmt->execute([$personel['id'], $yil, $yillik_hak, $kullanilan, $yillik_hak - $kullanilan])) {
+                $guncellenen++;
+            }
+        }
+        
+        return $guncellenen;
+    } catch(Exception $e) {
+        error_log("Toplu izin hakkı güncelleme hatası: " . $e->getMessage());
+        return 0;
+    }
+}
+
+function manuelIzinHakGuncelle($personel_id, $yil, $yeni_hak) {
+    global $pdo;
+    try {
+        // Mevcut kullanılan izni al
+        $kullanilan_sql = "SELECT COALESCE(kullanilan, 0) 
+                          FROM personel_izin_bakiye 
+                          WHERE personel_id = ? AND yil = ? AND izin_turu_id = 1";
+        
+        $stmt = $pdo->prepare($kullanilan_sql);
+        $stmt->execute([$personel_id, $yil]);
+        $kullanilan = $stmt->fetchColumn() ?: 0;
+        
+        // Manuel güncelleme kaydet
+        $sql = "INSERT INTO personel_izin_bakiye 
+                (personel_id, yil, izin_turu_id, yillik_hak, kullanilan, kalan)
+                VALUES (?, ?, 1, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                yillik_hak = VALUES(yillik_hak),
+                kalan = VALUES(yillik_hak) - kullanilan";
+        
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([$personel_id, $yil, $yeni_hak, $kullanilan, $yeni_hak - $kullanilan]);
+    } catch(PDOException $e) {
+        error_log("Manuel izin hakkı güncelleme hatası: " . $e->getMessage());
+        return false;
+    }
+}
+
+// === ÇALIŞMA SAATLERİ TAKİP FONKSİYONLARI ===
+
+function getGunlukCalismaKayitlari($tarih, $personel_id = null) {
+    global $pdo;
+    try {
+        $where_clause = "WHERE pgc.tarih = ?";
+        $params = [$tarih];
+        
+        if ($personel_id) {
+            $where_clause .= " AND pgc.personel_id = ?";
+            $params[] = $personel_id;
+        }
+        
+        $sql = "SELECT pgc.*, 
+                       CONCAT(p.ad, ' ', p.soyad) as personel_adi,
+                       p.sicil_no,
+                       p.avatar
+                FROM personel_giris_cikis pgc
+                JOIN personel p ON p.id = pgc.personel_id
+                {$where_clause}
+                ORDER BY pgc.giris_saati ASC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Günlük çalışma kayıtları hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getAylikCalismaOzeti($ay, $yil) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    p.id as personel_id,
+                    CONCAT(p.ad, ' ', p.soyad) as personel_adi,
+                    COUNT(pgc.id) as calisilan_gun,
+                    AVG(pgc.toplam_calisma_saati) as ortalama_saat,
+                    SUM(pgc.mesai_saati) as toplam_mesai,
+                    SUM(pgc.gecikme_dakika) as toplam_gecikme,
+                    COUNT(CASE WHEN pgc.durum = 'gecikme' THEN 1 END) as gecikme_sayisi,
+                    COUNT(CASE WHEN pgc.durum = 'devamsizlik' THEN 1 END) as devamsizlik_sayisi
+                FROM personel p
+                LEFT JOIN personel_giris_cikis pgc ON pgc.personel_id = p.id
+                    AND MONTH(pgc.tarih) = ? AND YEAR(pgc.tarih) = ?
+                WHERE p.aktif = 1
+                GROUP BY p.id
+                ORDER BY p.ad, p.soyad";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$ay, $yil]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Aylık çalışma özeti hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getCalismaIstatistikleri($ay, $yil) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    AVG(toplam_calisma_saati) as ortalama_saat,
+                    COUNT(CASE WHEN durum = 'normal' THEN 1 END) as zamaninda_gelen,
+                    COUNT(CASE WHEN durum = 'gecikme' THEN 1 END) as geciken,
+                    COUNT(CASE WHEN durum = 'devamsizlik' THEN 1 END) as devamsiz,
+                    MAX(gecikme_dakika) as max_gecikme,
+                    SUM(mesai_saati) as toplam_mesai
+                FROM personel_giris_cikis 
+                WHERE MONTH(tarih) = ? AND YEAR(tarih) = ?";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$ay, $yil]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Çalışma istatistikleri hatası: " . $e->getMessage());
+        return [
+            'ortalama_saat' => 0,
+            'zamaninda_gelen' => 0,
+            'geciken' => 0,
+            'devamsiz' => 0,
+            'max_gecikme' => 0,
+            'toplam_mesai' => 0
+        ];
+    }
+}
+
+// === PERFORMANS RAPORU FONKSİYONLARI ===
+
+function getPerformansRaporlari($baslangic_tarih, $bitis_tarih, $personel_id = null, $departman = null) {
+    global $pdo;
+    try {
+        $where_clause = "WHERE p.aktif = 1";
+        $params = [$baslangic_tarih, $bitis_tarih];
+        
+        if ($personel_id) {
+            $where_clause .= " AND p.id = ?";
+            $params[] = $personel_id;
+        }
+        
+        if ($departman) {
+            $where_clause .= " AND p.rol = ?";
+            $params[] = $departman;
+        }
+        
+        $sql = "SELECT 
+                    p.id as personel_id,
+                    CONCAT(p.ad, ' ', p.soyad) as personel_adi,
+                    p.sicil_no,
+                    p.rol as departman,
+                    p.avatar,
+                    
+                    -- Devam durumu
+                    COUNT(DISTINCT pgc.tarih) as calisilan_gun,
+                    (COUNT(DISTINCT pgc.tarih) * 100.0 / 
+                     DATEDIFF(?, ?)) as devam_orani,
+                    
+                    -- Çalışma saatleri
+                    AVG(pgc.toplam_calisma_saati) as ortalama_calisma_saati,
+                    SUM(pgc.mesai_saati) as mesai_saati,
+                    
+                    -- Değerlendirme skoru
+                    (SELECT pd.c_skoru FROM personel_degerlendirme pd 
+                     WHERE pd.personel_id = p.id 
+                     ORDER BY pd.olusturma_tarihi DESC LIMIT 1) as son_degerlendirme_skoru,
+                    (SELECT pd.olusturma_tarihi FROM personel_degerlendirme pd 
+                     WHERE pd.personel_id = p.id 
+                     ORDER BY pd.olusturma_tarihi DESC LIMIT 1) as son_degerlendirme_tarihi,
+                    
+                    -- Departmana özel metrikler
+                    CASE 
+                        WHEN p.rol = 'terapist' THEN 
+                            (SELECT COUNT(DISTINCT r.danisan_id) 
+                             FROM randevular r 
+                             WHERE r.personel_id = p.id 
+                             AND r.randevu_tarihi BETWEEN ? AND ?)
+                        WHEN p.rol = 'satis' THEN 
+                            (SELECT COUNT(*) 
+                             FROM satislar s 
+                             WHERE s.personel_id = p.id 
+                             AND s.olusturma_tarihi BETWEEN ? AND ?)
+                        ELSE 0
+                    END as departman_metrik,
+                    
+                    -- Müşteri memnuniyeti (terapistler için)
+                    CASE 
+                        WHEN p.rol = 'terapist' THEN 
+                            (SELECT AVG(hd.memnuniyet_skoru) 
+                             FROM hasta_degerlendirmeleri hd
+                             JOIN randevular r ON r.id = hd.randevu_id
+                             WHERE r.personel_id = p.id 
+                             AND hd.olusturma_tarihi BETWEEN ? AND ?)
+                        ELSE NULL
+                    END as musteri_memnuniyet
+                    
+                FROM personel p
+                LEFT JOIN personel_giris_cikis pgc ON pgc.personel_id = p.id
+                    AND pgc.tarih BETWEEN ? AND ?
+                {$where_clause}
+                GROUP BY p.id
+                ORDER BY p.ad, p.soyad";
+        
+        // Parametreleri ekle
+        $params = array_merge($params, [$baslangic_tarih, $bitis_tarih]); // departman metrik için
+        $params = array_merge($params, [$baslangic_tarih, $bitis_tarih]); // satış metrik için
+        $params = array_merge($params, [$baslangic_tarih, $bitis_tarih]); // müşteri memnuniyeti için
+        $params = array_merge($params, [$baslangic_tarih, $bitis_tarih]); // çalışma saatleri için
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $personel_performanslari = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Genel performans skorlarını hesapla
+        foreach ($personel_performanslari as &$personel) {
+            // Departmana özel değişkenler
+            if ($personel['departman'] == 'terapist') {
+                $personel['hasta_sayisi'] = $personel['departman_metrik'];
+                $personel['satis_sayisi'] = 0;
+            } else {
+                $personel['hasta_sayisi'] = 0;
+                $personel['satis_sayisi'] = $personel['departman_metrik'];
+            }
+            
+            // Verimlilik skoru hesaplama
+            $verimlilik_skoru = 0;
+            if ($personel['departman'] == 'terapist') {
+                // Terapist için: hasta sayısı + memnuniyet
+                $verimlilik_skoru = ($personel['hasta_sayisi'] * 2) + ($personel['musteri_memnuniyet'] * 20);
+            } elseif ($personel['departman'] == 'satis') {
+                // Satış için: satış sayısı
+                $verimlilik_skoru = $personel['satis_sayisi'] * 5;
+            }
+            $personel['verimlilik_skoru'] = min(100, $verimlilik_skoru);
+            
+            // Genel skor hesaplama (ağırlıklı ortalama)
+            $devam_agirlik = 0.3;
+            $calisma_agirlik = 0.2;
+            $verimlilik_agirlik = 0.3;
+            $degerlendirme_agirlik = 0.2;
+            
+            $genel_skor = ($personel['devam_orani'] * $devam_agirlik) +
+                         (min(100, $personel['ortalama_calisma_saati'] * 12.5) * $calisma_agirlik) +
+                         ($personel['verimlilik_skoru'] * $verimlilik_agirlik) +
+                         (($personel['son_degerlendirme_skoru'] * 10) * $degerlendirme_agirlik);
+            
+            $personel['genel_skor'] = $genel_skor;
+        }
+        
+        // Genel istatistikleri hesapla
+        $toplam_personel = count($personel_performanslari);
+        $genel_skor = $toplam_personel > 0 ? array_sum(array_column($personel_performanslari, 'genel_skor')) / $toplam_personel : 0;
+        $devam_orani = $toplam_personel > 0 ? array_sum(array_column($personel_performanslari, 'devam_orani')) / $toplam_personel : 0;
+        $verimlilik_skoru = $toplam_personel > 0 ? array_sum(array_column($personel_performanslari, 'verimlilik_skoru')) / $toplam_personel : 0;
+        $musteri_memnuniyet = 0;
+        $memnuniyet_sayisi = 0;
+        
+        foreach ($personel_performanslari as $p) {
+            if ($p['musteri_memnuniyet'] !== null) {
+                $musteri_memnuniyet += $p['musteri_memnuniyet'];
+                $memnuniyet_sayisi++;
+            }
+        }
+        $musteri_memnuniyet = $memnuniyet_sayisi > 0 ? $musteri_memnuniyet / $memnuniyet_sayisi : 0;
+        
+        return [
+            'genel_skor' => $genel_skor,
+            'devam_orani' => $devam_orani,
+            'verimlilik_skoru' => $verimlilik_skoru,
+            'musteri_memnuniyet' => $musteri_memnuniyet,
+            'detay' => $personel_performanslari
+        ];
+        
+    } catch(PDOException $e) {
+        error_log("Performans raporları hatası: " . $e->getMessage());
+        return [
+            'genel_skor' => 0,
+            'devam_orani' => 0,
+            'verimlilik_skoru' => 0,
+            'musteri_memnuniyet' => 0,
+            'detay' => []
+        ];
+    }
+}
+
+function getDepartmanKarsilastirma($baslangic_tarih, $bitis_tarih) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    p.rol as departman,
+                    COUNT(*) as personel_sayisi,
+                    AVG(CASE 
+                        WHEN pgc.personel_id IS NOT NULL THEN 
+                            (COUNT(DISTINCT pgc.tarih) * 100.0 / DATEDIFF(?, ?))
+                        ELSE 0
+                    END) as ortalama_devam,
+                    AVG(COALESCE(pgc_avg.ortalama_saat, 0)) as ortalama_calisma_saati
+                FROM personel p
+                LEFT JOIN personel_giris_cikis pgc ON pgc.personel_id = p.id
+                    AND pgc.tarih BETWEEN ? AND ?
+                LEFT JOIN (
+                    SELECT personel_id, AVG(toplam_calisma_saati) as ortalama_saat
+                    FROM personel_giris_cikis
+                    WHERE tarih BETWEEN ? AND ?
+                    GROUP BY personel_id
+                ) pgc_avg ON pgc_avg.personel_id = p.id
+                WHERE p.aktif = 1
+                GROUP BY p.rol
+                ORDER BY p.rol";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$bitis_tarih, $baslangic_tarih, $baslangic_tarih, $bitis_tarih, $baslangic_tarih, $bitis_tarih]);
+        $departmanlar = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Ortalama skor hesapla
+        foreach ($departmanlar as &$dept) {
+            $devam_skor = $dept['ortalama_devam'];
+            $calisma_skor = min(100, $dept['ortalama_calisma_saati'] * 12.5);
+            $dept['ortalama_skor'] = ($devam_skor * 0.6) + ($calisma_skor * 0.4);
+        }
+        
+        return $departmanlar;
+    } catch(PDOException $e) {
+        error_log("Departman karşılaştırma hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getTrendAnalizi($baslangic_tarih, $bitis_tarih) {
+    global $pdo;
+    try {
+        // Son 30 günlük trend
+        $sql = "SELECT 
+                    DATE(pgc.tarih) as tarih,
+                    AVG(CASE WHEN pgc.durum = 'normal' THEN 100 ELSE 
+                        CASE WHEN pgc.durum = 'gecikme' THEN 80 ELSE 60 END
+                    END) as performans_skoru,
+                    (COUNT(CASE WHEN pgc.durum IN ('normal', 'gecikme') THEN 1 END) * 100.0 / 
+                     COUNT(*)) as devam_orani
+                FROM personel_giris_cikis pgc
+                WHERE pgc.tarih BETWEEN DATE_SUB(?, INTERVAL 30 DAY) AND ?
+                GROUP BY DATE(pgc.tarih)
+                ORDER BY pgc.tarih";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$bitis_tarih, $bitis_tarih]);
+        $grafikler = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Trend hesaplama
+        $performans_degerler = array_column($grafikler, 'performans_skoru');
+        $genel_trend = 0;
+        
+        if (count($performans_degerler) >= 2) {
+            $ilk_degerler = array_slice($performans_degerler, 0, 5);
+            $son_degerler = array_slice($performans_degerler, -5);
+            
+            $ilk_ortalama = array_sum($ilk_degerler) / count($ilk_degerler);
+            $son_ortalama = array_sum($son_degerler) / count($son_degerler);
+            
+            $genel_trend = $son_ortalama - $ilk_ortalama;
+        }
+        
+        return [
+            'genel_trend' => $genel_trend,
+            'grafikler' => $grafikler
+        ];
+    } catch(PDOException $e) {
+        error_log("Trend analizi hatası: " . $e->getMessage());
+        return [
+            'genel_trend' => 0,
+            'grafikler' => []
+        ];
+    }
+}
+
+function getPerformansRankingList($baslangic_tarih, $bitis_tarih) {
+    global $pdo;
+    try {
+        $performans_verileri = getPerformansRaporlari($baslangic_tarih, $bitis_tarih);
+        $detay = $performans_verileri['detay'];
+        
+        // Skora göre sırala
+        usort($detay, function($a, $b) {
+            return $b['genel_skor'] <=> $a['genel_skor'];
+        });
+        
+        // Trend hesapla (önceki ay ile karşılaştır)
+        $onceki_ay_baslangic = date('Y-m-d', strtotime($baslangic_tarih . ' -1 month'));
+        $onceki_ay_bitis = date('Y-m-d', strtotime($bitis_tarih . ' -1 month'));
+        $onceki_performans = getPerformansRaporlari($onceki_ay_baslangic, $onceki_ay_bitis);
+        
+        foreach ($detay as &$personel) {
+            // Önceki ay skorunu bul
+            $onceki_skor = 0;
+            foreach ($onceki_performans['detay'] as $onceki) {
+                if ($onceki['personel_id'] == $personel['personel_id']) {
+                    $onceki_skor = $onceki['genel_skor'];
+                    break;
+                }
+            }
+            
+            $personel['trend'] = $personel['genel_skor'] - $onceki_skor;
+        }
+        
+        return array_slice($detay, 0, 10); // İlk 10'u döndür
+    } catch(Exception $e) {
+        error_log("Performans sıralama hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Gelişmiş performans metrikleri
+function calculatePerformanceScore($personel_data) {
+    $scores = [];
+    
+    // Devam skoru (0-100)
+    $scores['attendance'] = min(100, $personel_data['devam_orani']);
+    
+    // Çalışma saati skoru (8 saat = 100 puan)
+    $scores['working_hours'] = min(100, ($personel_data['ortalama_calisma_saati'] / 8) * 100);
+    
+    // Kalite skoru (değerlendirme skoruna göre)
+    $scores['quality'] = $personel_data['son_degerlendirme_skoru'] * 10;
+    
+    // Verimlilik skoru
+    $scores['productivity'] = $personel_data['verimlilik_skoru'];
+    
+    // Ağırlıklı genel skor
+    $weights = [
+        'attendance' => 0.25,
+        'working_hours' => 0.20,
+        'quality' => 0.30,
+        'productivity' => 0.25
+    ];
+    
+    $total_score = 0;
+    foreach ($scores as $metric => $score) {
+        $total_score += $score * $weights[$metric];
+    }
+    
+    return [
+        'total_score' => $total_score,
+        'breakdown' => $scores
+    ];
+}
+
+// Performans uyarı sistemi
+function checkPerformanceAlerts($baslangic_tarih, $bitis_tarih) {
+    global $pdo;
+    
+    $alerts = [];
+    $performans_verileri = getPerformansRaporlari($baslangic_tarih, $bitis_tarih);
+    
+    foreach ($performans_verileri['detay'] as $personel) {
+        // Düşük performans uyarısı
+        if ($personel['genel_skor'] < 60) {
+            $alerts[] = [
+                'type' => 'low_performance',
+                'personel_id' => $personel['personel_id'],
+                'personel_adi' => $personel['personel_adi'],
+                'skor' => $personel['genel_skor'],
+                'mesaj' => 'Düşük performans tespit edildi'
+            ];
+        }
+        
+        // Devamsızlık uyarısı
+        if ($personel['devam_orani'] < 80) {
+            $alerts[] = [
+                'type' => 'attendance_issue',
+                'personel_id' => $personel['personel_id'],
+                'personel_adi' => $personel['personel_adi'],
+                'oran' => $personel['devam_orani'],
+                'mesaj' => 'Devam problemi tespit edildi'
+            ];
+        }
+        
+        // Çalışma saati uyarısı
+        if ($personel['ortalama_calisma_saati'] < 6) {
+            $alerts[] = [
+                'type' => 'working_hours_low',
+                'personel_id' => $personel['personel_id'],
+                'personel_adi' => $personel['personel_adi'],
+                'saat' => $personel['ortalama_calisma_saati'],
+                'mesaj' => 'Düşük çalışma saati tespit edildi'
+            ];
+        }
+    }
+    
+    return $alerts;
+}
+
+// Otomatik rapor oluşturma
+function generateAutomaticReport($tarih) {
+    global $pdo;
+    
+    $baslangic = date('Y-m-01', strtotime($tarih));
+    $bitis = date('Y-m-t', strtotime($tarih));
+    
+    // Performans verilerini al
+    $performans = getPerformansRaporlari($baslangic, $bitis);
+    $uyarilar = checkPerformanceAlerts($baslangic, $bitis);
+    
+    // Rapor içeriği oluştur
+    $rapor = [
+        'tarih' => $tarih,
+        'genel_performans' => $performans['genel_skor'],
+        'en_iyi_performans' => array_slice($performans['detay'], 0, 3),
+        'iyilestirme_gereken' => array_filter($performans['detay'], function($p) {
+            return $p['genel_skor'] < 70;
+        }),
+        'uyarilar' => $uyarilar,
+        'oneriler' => generateRecommendations($performans['detay'])
+    ];
+    
+    return $rapor;
+}
+
+// Öneri sistemi
+function generateRecommendations($performans_detaylari) {
+    $oneriler = [];
+    
+    foreach ($performans_detaylari as $personel) {
+        $personel_onerileri = [];
+        
+        if ($personel['devam_orani'] < 85) {
+            $personel_onerileri[] = "Devam durumunu iyileştirmek için esnek çalışma saatleri değerlendirilebilir";
+        }
+        
+        if ($personel['verimlilik_skoru'] < 70) {
+            $personel_onerileri[] = "Verimlilik artışı için ek eğitim programları planlanabilir";
+        }
+        
+        if ($personel['ortalama_calisma_saati'] > 10) {
+            $personel_onerileri[] = "Aşırı mesai yapıyor, iş yükü dengelemesi gerekli";
+        }
+        
+        if (!empty($personel_onerileri)) {
+            $oneriler[$personel['personel_id']] = [
+                'personel_adi' => $personel['personel_adi'],
+                'oneriler' => $personel_onerileri
+            ];
+        }
+    }
+    
+    return $oneriler;
+}
+
+// Excel export için veri hazırlama
+function preparePerformanceExcelData($baslangic_tarih, $bitis_tarih) {
+    $performans_verileri = getPerformansRaporlari($baslangic_tarih, $bitis_tarih);
+    $excel_data = [];
+    
+    foreach ($performans_verileri['detay'] as $personel) {
+        $excel_data[] = [
+            'Personel Adı' => $personel['personel_adi'],
+            'Sicil No' => $personel['sicil_no'],
+            'Departman' => ucfirst($personel['departman']),
+            'Devam Oranı (%)' => number_format($personel['devam_orani'], 2),
+            'Ortalama Çalışma Saati' => number_format($personel['ortalama_calisma_saati'], 2),
+            'Toplam Mesai Saati' => number_format($personel['mesai_saati'], 2),
+            'Verimlilik Skoru (%)' => number_format($personel['verimlilik_skoru'], 2),
+            'Son Değerlendirme' => $personel['son_degerlendirme_skoru'] ? number_format($personel['son_degerlendirme_skoru'], 2) : 'N/A',
+            'Genel Performans Skoru (%)' => number_format($personel['genel_skor'], 2),
+            'Performans Seviyesi' => $personel['genel_skor'] >= 85 ? 'Mükemmel' : 
+                                  ($personel['genel_skor'] >= 70 ? 'İyi' : 
+                                  ($personel['genel_skor'] >= 50 ? 'Orta' : 'Geliştirilmeli'))
+        ];
+    }
+    
+    return $excel_data;
 }
 
 
