@@ -1,17 +1,17 @@
 <?php
 // ajax/izin_onayla.php
 session_start();
-require_once '../functions.php';
+
 require_once '../con/db.php';
 
 header('Content-Type: application/json');
-
+/*
 // Yetki kontrolü
 if (!in_array($_SESSION['rol'], ['yonetici', 'muhasebe'])) {
     echo json_encode(['success' => false, 'message' => 'Yetkisiz erişim']);
     exit;
 }
-
+*/
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     echo json_encode(['success' => false, 'message' => 'Geçersiz istek']);
     exit;
