@@ -284,6 +284,34 @@ function getTerapistler($aktif_only = true) {
     }
 }
 
+function getTerapistler11($aktif_only = true) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    p.id,
+                    CONCAT(p.ad, ' ', p.soyad) as ad_soyad,
+                    p.ad,
+                    p.soyad,
+                    p.telefon,
+                    p.email,
+                    p.uzmanlik_alani,
+                    p.aktif
+                FROM personel p 
+                WHERE p.rol = 'terapist'";
+        
+        if ($aktif_only) {
+            $sql .= " AND p.aktif = 1";
+        }
+        
+        $sql .= " ORDER BY p.ad, p.soyad";
+        
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Terapistleri getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
 
 // Personel İşlemleri
 
@@ -379,7 +407,7 @@ function personelDurumGuncelle($id, $aktif) {
 
 
 // Add to functions.php
-function getDanisanlarWithRemainingAppointments() {
+function getDanisanlarWithRemainingAppointments11() {
     global $pdo;
     try {
         $sql = "SELECT DISTINCT d.*, 
@@ -407,6 +435,43 @@ function getDanisanlarWithRemainingAppointments() {
         return [];
     }
 }
+
+function getDanisanlarWithRemainingAppointments() {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    d.id,
+                    CONCAT(d.ad, ' ', d.soyad, ' - ', st.ad) as ad_soyad,
+                    d.telefon,
+                    d.email,
+                    s.id as aktif_satis_id,
+                    s.hizmet_paketi_id,
+                    st.ad as seans_turu,
+                    st.id as seans_turu_id,
+                    (st.seans_adet + COALESCE(s.hediye_seans, 0)) as toplam_seans,
+                    COUNT(r.id) as kullanilan_seans,
+                    (st.seans_adet + COALESCE(s.hediye_seans, 0)) - COUNT(r.id) as kalan_seans,
+                    s.toplam_tutar,
+                    s.odenen_tutar,
+                    s.toplam_tutar - s.odenen_tutar as kalan_borc
+                FROM danisanlar d
+                JOIN satislar s ON d.id = s.danisan_id AND s.aktif = 1
+                JOIN seans_turleri st ON s.hizmet_paketi_id = st.id
+                LEFT JOIN randevular r ON s.id = r.satis_id AND r.aktif = 1
+                WHERE d.aktif = 1 
+                GROUP BY d.id, s.id
+                HAVING kalan_seans > 0
+                ORDER BY d.ad, d.soyad, st.ad";
+        
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Danışanları getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+
 
 function getSatisBilgileri($danisan_id) {
     global $pdo;
@@ -726,7 +791,7 @@ function uyelikGuncelle($id, $ad, $seviye, $min_seans_sayisi, $indirim_yuzdesi, 
 }
 
 // Seans Türleri İşlemleri
-function getSeansTurleri($aktif_only = true) {
+function getSeansTurleri1($aktif_only = true) {
     global $pdo;
     try {
         $sql = "SELECT * FROM seans_turleri";
@@ -737,6 +802,22 @@ function getSeansTurleri($aktif_only = true) {
         $sorgu = $pdo->query($sql);
         return $sorgu->fetchAll(PDO::FETCH_ASSOC);
     } catch(PDOException $e) {
+        return [];
+    }
+}
+function getSeansTurleri($aktif_only = true) {
+    global $pdo;
+    try {
+        $sql = "SELECT * FROM seans_turleri";
+        if ($aktif_only) {
+            $sql .= " WHERE aktif = 1";
+        }
+        $sql .= " ORDER BY ad";
+        
+        $stmt = $pdo->query($sql);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Seans türlerini getirme hatası: " . $e->getMessage());
         return [];
     }
 }
@@ -756,6 +837,85 @@ function getHizmetPaketleri($aktif_only = true) {
         return $sorgu->fetchAll(PDO::FETCH_ASSOC);
     } catch(PDOException $e) {
         return [];
+    }
+}
+
+
+function getDanisanAktifSatisGelismis($danisan_id) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    s.id,
+                    s.danisan_id,
+                    s.hizmet_paketi_id,
+                    s.toplam_tutar,
+                    s.odenen_tutar,
+                    s.hediye_seans,
+                    st.ad as seans_turu,
+                    st.sure,
+                    st.seans_adet,
+                    st.evaluation_interval,
+                    (st.seans_adet + COALESCE(s.hediye_seans, 0)) as toplam_seans,
+                    COUNT(r.id) as kullanilan_seans,
+                    (st.seans_adet + COALESCE(s.hediye_seans, 0)) - COUNT(r.id) as kalan_seans,
+                    (s.toplam_tutar - s.odenen_tutar) as kalan_borc
+                FROM satislar s
+                JOIN seans_turleri st ON s.hizmet_paketi_id = st.id
+                LEFT JOIN randevular r ON s.id = r.satis_id AND r.aktif = 1
+                WHERE s.danisan_id = ? 
+                AND s.aktif = 1 
+                GROUP BY s.id
+                HAVING kalan_seans > 0
+                ORDER BY s.olusturma_tarihi DESC
+                LIMIT 1";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$danisan_id]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$result) {
+            error_log("Danışan $danisan_id için aktif satış bulunamadı");
+            return false;
+        }
+        
+        return $result;
+    } catch (PDOException $e) {
+        error_log("Danışan satış bilgisi hatası: " . $e->getMessage());
+        return false;
+    }
+}
+
+function getDanisanAktifSatis($danisan_id) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                    s.*,
+                    st.ad as seans_turu,
+                    st.sure,
+                    st.evaluation_interval,
+                    (s.seans_adet + COALESCE(s.hediye_seans, 0)) as toplam_seans,
+                    COUNT(r.id) as kullanilan_seans,
+                    (s.seans_adet + COALESCE(s.hediye_seans, 0)) - COUNT(r.id) as kalan_seans,
+                    COALESCE(SUM(o.tutar), 0) as odenen_tutar,
+                    s.toplam_tutar - COALESCE(SUM(o.tutar), 0) as kalan_borc
+                FROM satislar s
+                JOIN seans_turleri st ON s.hizmet_paketi_id = st.id
+                LEFT JOIN randevular r ON s.id = r.satis_id AND r.aktif = 1
+                LEFT JOIN odemeler o ON s.id = o.satis_id
+                WHERE s.danisan_id = ? 
+                AND s.aktif = 1 
+                AND s.durum IN ('onaylandi', 'devam_ediyor')
+                GROUP BY s.id
+                HAVING kalan_seans > 0
+                ORDER BY s.id DESC
+                LIMIT 1";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$danisan_id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Danışan satış bilgisi hatası: " . $e->getMessage());
+        return false;
     }
 }
 
@@ -782,6 +942,176 @@ function paketEkle($ad, $seans_turu_id, $seans_sayisi, $fiyat, $gecerlilik_gun, 
         ]);
     } catch(PDOException $e) {
         return false;
+    }
+}
+
+
+function randevuEkleGelismis($danisan_id, $personel_id, $seans_turu_id, $room_id, $randevu_tarihi, $notlar = '') {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // 1. Kilitleme kontrolü
+        $tarih = date('Y-m-d', strtotime($randevu_tarihi));
+        $saat = date('H:i:s', strtotime($randevu_tarihi));
+        
+        if (odaSaatKilitliMi($room_id, $tarih, $saat)) {
+            throw new Exception('Bu oda ve saat kilitlidir');
+        }
+        
+        // 2. Çakışma kontrolü
+        $conflict_sql = "SELECT id FROM randevular 
+                        WHERE room_id = ? AND randevu_tarihi = ? AND aktif = 1";
+        $conflict_stmt = $pdo->prepare($conflict_sql);
+        $conflict_stmt->execute([$room_id, $randevu_tarihi]);
+        
+        if ($conflict_stmt->fetch()) {
+            throw new Exception('Bu oda ve saatte başka bir randevu bulunmaktadır');
+        }
+        
+        // 3. Danışanın aktif satışını kontrol et
+        $satis = getDanisanAktifSatisGelismis($danisan_id);
+        if (!$satis) {
+            throw new Exception('Bu danışan için aktif ve kullanılabilir satış bulunamadı');
+        }
+        
+        if ($satis['kalan_seans'] <= 0) {
+            throw new Exception('Bu danışanın tüm seansları kullanılmış');
+        }
+        
+        // 4. Ödeme kontrolü - en az %50 ödenmiş olmalı
+        $odeme_yuzdesi = ($satis['odenen_tutar'] / $satis['toplam_tutar']) * 100;
+        if ($odeme_yuzdesi < 50) {
+            throw new Exception('Randevu alabilmek için en az %50 ödeme yapılmalıdır. Mevcut ödeme: %' . number_format($odeme_yuzdesi, 1));
+        }
+        
+        // 5. Kaçıncı seans olduğunu hesapla
+        $seans_sirasi_sql = "SELECT COUNT(*) + 1 FROM randevular 
+                            WHERE satis_id = ? AND aktif = 1";
+        $seans_stmt = $pdo->prepare($seans_sirasi_sql);
+        $seans_stmt->execute([$satis['id']]);
+        $seans_sirasi = $seans_stmt->fetchColumn();
+        
+        // 6. Değerlendirme randevusu mu kontrol et
+        $evaluation_type = null;
+        $evaluation_number = null;
+        
+        if ($satis['evaluation_interval'] > 0) {
+            if ($seans_sirasi == 1) {
+                $evaluation_type = 'initial';
+            } elseif ($seans_sirasi % $satis['evaluation_interval'] == 0) {
+                $evaluation_type = 'progress';
+                $evaluation_number = floor($seans_sirasi / $satis['evaluation_interval']);
+            }
+        }
+        
+        // 7. Randevuyu ekle
+        $insert_sql = "INSERT INTO randevular 
+                       (danisan_id, personel_id, seans_turu_id, room_id, randevu_tarihi, 
+                        notlar, satis_id, durum, evaluation_type, evaluation_number) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, 'onaylandi', ?, ?)";
+        
+        $insert_stmt = $pdo->prepare($insert_sql);
+        $result = $insert_stmt->execute([
+            $danisan_id, $personel_id, $seans_turu_id, $room_id, 
+            $randevu_tarihi, $notlar, $satis['id'], $evaluation_type, $evaluation_number
+        ]);
+        
+        if (!$result) {
+            throw new Exception('Randevu eklenirken veritabanı hatası oluştu');
+        }
+        
+        $randevu_id = $pdo->lastInsertId();
+        
+        $pdo->commit();
+        
+        return [
+            'success' => true,
+            'message' => 'Randevu başarıyla eklendi',
+            'randevu_id' => $randevu_id,
+            'seans_sirasi' => $seans_sirasi,
+            'kalan_seans' => $satis['kalan_seans'] - 1,
+            'evaluation_type' => $evaluation_type
+        ];
+        
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Randevu güncelleme - geliştirilmiş kontroller ile
+ */
+function randevuGuncelleGelismis($randevu_id, $danisan_id, $personel_id, $seans_turu_id, $room_id, $randevu_tarihi, $notlar = '', $evaluation_notes = '') {
+    global $pdo;
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // 1. Mevcut randevuyu getir
+        $current_sql = "SELECT * FROM randevular WHERE id = ? AND aktif = 1";
+        $current_stmt = $pdo->prepare($current_sql);
+        $current_stmt->execute([$randevu_id]);
+        $current = $current_stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$current) {
+            throw new Exception('Güncellenecek randevu bulunamadı');
+        }
+        
+        // 2. Oda/saat değişiyorsa kilitleme kontrolü
+        if ($current['room_id'] != $room_id || $current['randevu_tarihi'] != $randevu_tarihi) {
+            $tarih = date('Y-m-d', strtotime($randevu_tarihi));
+            $saat = date('H:i:s', strtotime($randevu_tarihi));
+            
+            if (odaSaatKilitliMi($room_id, $tarih, $saat)) {
+                throw new Exception('Bu oda ve saat kilitlidir');
+            }
+            
+            // Çakışma kontrolü (kendi randevusu hariç)
+            $conflict_sql = "SELECT id FROM randevular 
+                            WHERE room_id = ? AND randevu_tarihi = ? AND aktif = 1 AND id != ?";
+            $conflict_stmt = $pdo->prepare($conflict_sql);
+            $conflict_stmt->execute([$room_id, $randevu_tarihi, $randevu_id]);
+            
+            if ($conflict_stmt->fetch()) {
+                throw new Exception('Bu oda ve saatte başka bir randevu bulunmaktadır');
+            }
+        }
+        
+        // 3. Randevuyu güncelle
+        $update_sql = "UPDATE randevular SET 
+                       danisan_id = ?, personel_id = ?, seans_turu_id = ?, 
+                       room_id = ?, randevu_tarihi = ?, notlar = ?, evaluation_notes = ?
+                       WHERE id = ? AND aktif = 1";
+        
+        $update_stmt = $pdo->prepare($update_sql);
+        $result = $update_stmt->execute([
+            $danisan_id, $personel_id, $seans_turu_id, $room_id, 
+            $randevu_tarihi, $notlar, $evaluation_notes, $randevu_id
+        ]);
+        
+        if (!$result) {
+            throw new Exception('Randevu güncellenirken veritabanı hatası oluştu');
+        }
+        
+        $pdo->commit();
+        
+        return [
+            'success' => true,
+            'message' => 'Randevu başarıyla güncellendi'
+        ];
+        
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        return [
+            'success' => false,
+            'message' => $e->getMessage()
+        ];
     }
 }
 
@@ -4191,7 +4521,965 @@ function getHedefDurumClass($durum) {
 }
 
 
+// Belge kategorilerini getir
+function getBelgeKategorileri($aktif = true) {
+    global $pdo;
+    try {
+        $sql = "SELECT * FROM belge_kategorileri";
+        if ($aktif) {
+            $sql .= " WHERE aktif = 1";
+        }
+        $sql .= " ORDER BY ad ASC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        return [];
+    }
+}
 
+
+
+// Belgeleri listele
+function getBelgeler($kategori_id = null, $arama = '', $sayfa = 1, $limit = 20, $kullanici_id = null, $gizlilik_kontrolu = true) {
+    global $pdo;
+    
+    try {
+        $offset = ($sayfa - 1) * $limit;
+        
+        $sql = "SELECT b.*, bk.ad as kategori_adi, bk.icon as kategori_icon, bk.renk as kategori_renk,
+                       p.ad as olusturan_ad, p.soyad as olusturan_soyad
+                FROM belgeler b
+                LEFT JOIN belge_kategorileri bk ON b.kategori_id = bk.id
+                LEFT JOIN personel p ON b.olusturan_id = p.id
+                WHERE b.aktif = 1";
+        
+        $params = [];
+        
+        // Kategori filtresi
+        if ($kategori_id) {
+            $sql .= " AND b.kategori_id = :kategori_id";
+            $params['kategori_id'] = $kategori_id;
+        }
+        
+        // Arama filtresi
+        if ($arama) {
+            $sql .= " AND (b.baslik LIKE :arama OR b.aciklama LIKE :arama OR b.etiketler LIKE :arama)";
+            $params['arama'] = '%' . $arama . '%';
+        }
+        
+        // Gizlilik kontrolü
+        if ($gizlilik_kontrolu && $kullanici_id) {
+            $sql .= " AND (b.gizlilik_seviyesi = 'genel' OR b.olusturan_id = :kullanici_id 
+                      OR EXISTS (SELECT 1 FROM belge_erisim_izinleri bei 
+                                WHERE bei.belge_id = b.id AND bei.kullanici_id = :kullanici_id2 AND bei.aktif = 1))";
+            $params['kullanici_id'] = $kullanici_id;
+            $params['kullanici_id2'] = $kullanici_id;
+        }
+        
+        $sql .= " ORDER BY b.olusturma_tarihi DESC LIMIT :limit OFFSET :offset";
+        
+        $stmt = $pdo->prepare($sql);
+        
+        // Parametreleri bağla
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, $value);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        
+        $stmt->execute();
+        $belgeler = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Toplam kayıt sayısını al
+        $count_sql = str_replace('SELECT b.*, bk.ad as kategori_adi, bk.icon as kategori_icon, bk.renk as kategori_renk, p.ad as olusturan_ad, p.soyad as olusturan_soyad', 'SELECT COUNT(*)', $sql);
+        $count_sql = preg_replace('/ORDER BY.*?LIMIT.*/', '', $count_sql);
+        
+        $count_stmt = $pdo->prepare($count_sql);
+        foreach ($params as $key => $value) {
+            $count_stmt->bindValue(':' . $key, $value);
+        }
+        $count_stmt->execute();
+        $toplam = $count_stmt->fetchColumn();
+        
+        return [
+            'belgeler' => $belgeler,
+            'toplam' => $toplam,
+            'sayfa' => $sayfa,
+            'toplam_sayfa' => ceil($toplam / $limit)
+        ];
+        
+    } catch(PDOException $e) {
+        return [
+            'belgeler' => [],
+            'toplam' => 0,
+            'sayfa' => 1,
+            'toplam_sayfa' => 0
+        ];
+    }
+}
+
+// Belge detayını getir
+function getBelgeDetay($belge_id, $kullanici_id = null) {
+    global $pdo;
+    
+    try {
+        $sql = "SELECT b.*, bk.ad as kategori_adi, bk.icon as kategori_icon, bk.renk as kategori_renk,
+                       p.ad as olusturan_ad, p.soyad as olusturan_soyad
+                FROM belgeler b
+                LEFT JOIN belge_kategorileri bk ON b.kategori_id = bk.id
+                LEFT JOIN personel p ON b.olusturan_id = p.id
+                WHERE b.id = :belge_id AND b.aktif = 1";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['belge_id' => $belge_id]);
+        $belge = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$belge) {
+            return null;
+        }
+        
+        // Gizlilik kontrolü
+        if ($belge['gizlilik_seviyesi'] !== 'genel' && $kullanici_id) {
+            if ($belge['olusturan_id'] !== $kullanici_id) {
+                // Erişim izni var mı kontrol et
+                $izin_sql = "SELECT COUNT(*) FROM belge_erisim_izinleri 
+                            WHERE belge_id = :belge_id AND kullanici_id = :kullanici_id AND aktif = 1";
+                $izin_stmt = $pdo->prepare($izin_sql);
+                $izin_stmt->execute(['belge_id' => $belge_id, 'kullanici_id' => $kullanici_id]);
+                
+                if ($izin_stmt->fetchColumn() == 0) {
+                    return null; // Erişim izni yok
+                }
+            }
+        }
+        
+        // Etiketleri decode et
+        $belge['etiketler'] = json_decode($belge['etiketler'], true) ?: [];
+        
+        return $belge;
+        
+    } catch(PDOException $e) {
+        return null;
+    }
+}
+
+// Belge versiyonu ekleme
+function belgeVersiyonEkle($belge_id, $versiyon_no, $dosya_adi, $dosya_boyutu, $degisiklik_aciklamasi, $olusturan_id) {
+    global $pdo;
+    
+    try {
+        $sql = "INSERT INTO belge_versiyonlari (belge_id, versiyon_no, dosya_adi, dosya_boyutu, degisiklik_aciklamasi, olusturan_id)
+                VALUES (:belge_id, :versiyon_no, :dosya_adi, :dosya_boyutu, :degisiklik_aciklamasi, :olusturan_id)";
+        
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([
+            'belge_id' => $belge_id,
+            'versiyon_no' => $versiyon_no,
+            'dosya_adi' => $dosya_adi,
+            'dosya_boyutu' => $dosya_boyutu,
+            'degisiklik_aciklamasi' => $degisiklik_aciklamasi,
+            'olusturan_id' => $olusturan_id
+        ]);
+        
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+
+// Belge aktivitesi ekleme
+function belgeAktiviteEkle($belge_id, $kullanici_id, $aktivite, $aciklama = null) {
+    global $pdo;
+    
+    try {
+        $sql = "INSERT INTO belge_aktiviteleri (belge_id, kullanici_id, aktivite, aciklama, ip_adresi, user_agent)
+                VALUES (:belge_id, :kullanici_id, :aktivite, :aciklama, :ip_adresi, :user_agent)";
+        
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([
+            'belge_id' => $belge_id,
+            'kullanici_id' => $kullanici_id,
+            'aktivite' => $aktivite,
+            'aciklama' => $aciklama,
+            'ip_adresi' => $_SERVER['REMOTE_ADDR'] ?? null,
+            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? null
+        ]);
+        
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Belge indirme
+function belgeIndir($belge_id, $kullanici_id) {
+    $belge = getBelgeDetay($belge_id, $kullanici_id);
+    
+    if (!$belge) {
+        return false;
+    }
+    
+    $dosya_yolu = 'uploads/belgeler/' . $belge['dosya_adi'];
+    
+    if (!file_exists($dosya_yolu)) {
+        return false;
+    }
+    
+    // Aktivite kaydı oluştur
+    belgeAktiviteEkle($belge_id, $kullanici_id, 'indirildi');
+    
+    // Dosyayı indir
+    header('Content-Type: ' . $belge['mime_type']);
+    header('Content-Disposition: attachment; filename="' . $belge['orijinal_dosya_adi'] . '"');
+    header('Content-Length: ' . filesize($dosya_yolu));
+    readfile($dosya_yolu);
+    exit;
+}
+
+// Belge silme
+function belgeSil($belge_id, $kullanici_id) {
+    global $pdo;
+    
+    try {
+        $belge = getBelgeDetay($belge_id, $kullanici_id);
+        
+        if (!$belge) {
+            return [
+                'success' => false,
+                'message' => 'Belge bulunamadı veya erişim izniniz yok!'
+            ];
+        }
+        
+        // Sadece oluşturan veya admin silebilir
+        if ($belge['olusturan_id'] !== $kullanici_id) {
+            // Admin kontrolü yapılabilir
+            return [
+                'success' => false,
+                'message' => 'Bu belgeyi silme yetkiniz yok!'
+            ];
+        }
+        
+        $pdo->beginTransaction();
+        
+        // Belgeyi pasif yap (soft delete)
+        $sql = "UPDATE belgeler SET aktif = 0, guncelleyen_id = :kullanici_id WHERE id = :belge_id";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['belge_id' => $belge_id, 'kullanici_id' => $kullanici_id]);
+        
+        // Aktivite kaydı oluştur
+        belgeAktiviteEkle($belge_id, $kullanici_id, 'silindi', 'Belge sistemden kaldırıldı');
+        
+        $pdo->commit();
+        
+        return [
+            'success' => true,
+            'message' => 'Belge başarıyla silindi!'
+        ];
+        
+    } catch(PDOException $e) {
+        $pdo->rollback();
+        return [
+            'success' => false,
+            'message' => 'Silme işlemi başarısız!'
+        ];
+    }
+}
+
+// Belge güncelleme
+function belgeGuncelle($belge_id, $baslik, $aciklama, $kategori_id, $belge_tarihi, $etiketler, $gizlilik_seviyesi, $kullanici_id) {
+    global $pdo;
+    
+    try {
+        $belge = getBelgeDetay($belge_id, $kullanici_id);
+        
+        if (!$belge) {
+            return [
+                'success' => false,
+                'message' => 'Belge bulunamadı veya erişim izniniz yok!'
+            ];
+        }
+        
+        $sql = "UPDATE belgeler SET 
+                    baslik = :baslik,
+                    aciklama = :aciklama,
+                    kategori_id = :kategori_id,
+                    belge_tarihi = :belge_tarihi,
+                    etiketler = :etiketler,
+                    gizlilik_seviyesi = :gizlilik_seviyesi,
+                    guncelleyen_id = :kullanici_id
+                WHERE id = :belge_id";
+        
+        $stmt = $pdo->prepare($sql);
+        $result = $stmt->execute([
+            'baslik' => $baslik,
+            'aciklama' => $aciklama,
+            'kategori_id' => $kategori_id,
+            'belge_tarihi' => $belge_tarihi,
+            'etiketler' => json_encode($etiketler),
+            'gizlilik_seviyesi' => $gizlilik_seviyesi,
+            'kullanici_id' => $kullanici_id,
+            'belge_id' => $belge_id
+        ]);
+        
+        if ($result) {
+            // Aktivite kaydı oluştur
+            belgeAktiviteEkle($belge_id, $kullanici_id, 'guncellendi', 'Belge bilgileri güncellendi');
+            
+            return [
+                'success' => true,
+                'message' => 'Belge başarıyla güncellendi!'
+            ];
+        }
+        
+        return [
+            'success' => false,
+            'message' => 'Güncelleme başarısız!'
+        ];
+        
+    } catch(PDOException $e) {
+        return [
+            'success' => false,
+            'message' => 'Güncelleme işlemi başarısız!'
+        ];
+    }
+}
+
+// Favorilere ekleme/çıkarma
+function belgeFavoriToggle($belge_id, $kullanici_id) {
+    global $pdo;
+    
+    try {
+        $belge = getBelgeDetay($belge_id, $kullanici_id);
+        
+        if (!$belge) {
+            return [
+                'success' => false,
+                'message' => 'Belge bulunamadı!'
+            ];
+        }
+        
+        $yeni_durum = $belge['favori'] ? 0 : 1;
+        
+        $sql = "UPDATE belgeler SET favori = :favori WHERE id = :belge_id";
+        $stmt = $pdo->prepare($sql);
+        $result = $stmt->execute(['favori' => $yeni_durum, 'belge_id' => $belge_id]);
+        
+        if ($result) {
+            $aktivite = $yeni_durum ? 'favorilere_eklendi' : 'favorilerden_cikarildi';
+            belgeAktiviteEkle($belge_id, $kullanici_id, 'favorilere_eklendi', 
+                            $yeni_durum ? 'Favorilere eklendi' : 'Favorilerden çıkarıldı');
+            
+            return [
+                'success' => true,
+                'favori' => $yeni_durum,
+                'message' => $yeni_durum ? 'Favorilere eklendi!' : 'Favorilerden çıkarıldı!'
+            ];
+        }
+        
+        return [
+            'success' => false,
+            'message' => 'İşlem başarısız!'
+        ];
+        
+    } catch(PDOException $e) {
+        return [
+            'success' => false,
+            'message' => 'İşlem başarısız!'
+        ];
+    }
+}
+
+// Belge paylaşım linki oluştur
+function belgePaylasimLinkiOlustur($belge_id, $kullanici_id, $sifre = null, $gecerlilik_tarihi = null, $indirme_limiti = null) {
+    global $pdo;
+    
+    try {
+        $belge = getBelgeDetay($belge_id, $kullanici_id);
+        
+        if (!$belge) {
+            return [
+                'success' => false,
+                'message' => 'Belge bulunamadı!'
+            ];
+        }
+        
+        $paylasim_id = generateUUID();
+        $paylasim_linki = md5($paylasim_id . time());
+        
+        $sql = "INSERT INTO belge_paylasimlari (id, belge_id, paylasim_linki, sifre, indirme_limiti, son_gecerlilik_tarihi, olusturan_id)
+                VALUES (:id, :belge_id, :paylasim_linki, :sifre, :indirme_limiti, :son_gecerlilik_tarihi, :olusturan_id)";
+        
+        $stmt = $pdo->prepare($sql);
+        $result = $stmt->execute([
+            'id' => $paylasim_id,
+            'belge_id' => $belge_id,
+            'paylasim_linki' => $paylasim_linki,
+            'sifre' => $sifre ? password_hash($sifre, PASSWORD_DEFAULT) : null,
+            'indirme_limiti' => $indirme_limiti,
+            'son_gecerlilik_tarihi' => $gecerlilik_tarihi,
+            'olusturan_id' => $kullanici_id
+        ]);
+        
+        if ($result) {
+            // Aktivite kaydı oluştur
+            belgeAktiviteEkle($belge_id, $kullanici_id, 'paylasildi', 'Paylaşım linki oluşturuldu');
+            
+            return [
+                'success' => true,
+                'paylasim_linki' => $paylasim_linki,
+                'tam_link' => $_SERVER['HTTP_HOST'] . '/belge_paylasim.php?link=' . $paylasim_linki,
+                'message' => 'Paylaşım linki oluşturuldu!'
+            ];
+        }
+        
+        return [
+            'success' => false,
+            'message' => 'Paylaşım linki oluşturulamadı!'
+        ];
+        
+    } catch(PDOException $e) {
+        return [
+            'success' => false,
+            'message' => 'İşlem başarısız!'
+        ];
+    }
+}
+
+
+// Belge arama (gelişmiş)
+function belgelerdeArama($arama_terimi, $kategori_id = null, $tarih_baslangic = null, $tarih_bitis = null, $gizlilik_seviyesi = null, $kullanici_id = null) {
+    global $pdo;
+    
+    try {
+        $sql = "SELECT b.*, bk.ad as kategori_adi, bk.icon as kategori_icon, bk.renk as kategori_renk,
+                       p.ad as olusturan_ad, p.soyad as olusturan_soyad,
+                       MATCH(b.baslik, b.aciklama, b.etiketler) AGAINST(:arama_terimi IN BOOLEAN MODE) as relevance
+                FROM belgeler b
+                LEFT JOIN belge_kategorileri bk ON b.kategori_id = bk.id
+                LEFT JOIN personel p ON b.olusturan_id = p.id
+                WHERE b.aktif = 1";
+        
+        $params = ['arama_terimi' => $arama_terimi];
+        
+        // Arama terimi
+        if ($arama_terimi) {
+            $sql .= " AND (MATCH(b.baslik, b.aciklama, b.etiketler) AGAINST(:arama_terimi2 IN BOOLEAN MODE)
+                     OR b.baslik LIKE :arama_like 
+                     OR b.aciklama LIKE :arama_like2)";
+            $params['arama_terimi2'] = $arama_terimi;
+            $params['arama_like'] = '%' . $arama_terimi . '%';
+            $params['arama_like2'] = '%' . $arama_terimi . '%';
+        }
+        
+        // Diğer filtreler
+        if ($kategori_id) {
+            $sql .= " AND b.kategori_id = :kategori_id";
+            $params['kategori_id'] = $kategori_id;
+        }
+        
+        if ($tarih_baslangic) {
+            $sql .= " AND b.belge_tarihi >= :tarih_baslangic";
+            $params['tarih_baslangic'] = $tarih_baslangic;
+        }
+        
+        if ($tarih_bitis) {
+            $sql .= " AND b.belge_tarihi <= :tarih_bitis";
+            $params['tarih_bitis'] = $tarih_bitis;
+        }
+        
+        if ($gizlilik_seviyesi) {
+            $sql .= " AND b.gizlilik_seviyesi = :gizlilik_seviyesi";
+            $params['gizlilik_seviyesi'] = $gizlilik_seviyesi;
+        }
+        
+        // Gizlilik kontrolü
+        if ($kullanici_id) {
+            $sql .= " AND (b.gizlilik_seviyesi = 'genel' OR b.olusturan_id = :kullanici_id 
+                      OR EXISTS (SELECT 1 FROM belge_erisim_izinleri bei 
+                                WHERE bei.belge_id = b.id AND bei.kullanici_id = :kullanici_id2 AND bei.aktif = 1))";
+            $params['kullanici_id'] = $kullanici_id;
+            $params['kullanici_id2'] = $kullanici_id;
+        }
+        
+        $sql .= " ORDER BY relevance DESC, b.olusturma_tarihi DESC LIMIT 50";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+    } catch(PDOException $e) {
+        return [];
+    }
+}
+
+// Belge istatistikleri
+function getBelgeIstatistikleri($kullanici_id = null) {
+    global $pdo;
+    
+    try {
+        $stats = [];
+        
+        // Toplam belge sayısı
+        $sql = "SELECT COUNT(*) as toplam FROM belgeler WHERE aktif = 1";
+        $params = [];
+        
+        if ($kullanici_id) {
+            $sql .= " AND (gizlilik_seviyesi = 'genel' OR olusturan_id = :kullanici_id)";
+            $params['kullanici_id'] = $kullanici_id;
+        }
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $stats['toplam_belge'] = $stmt->fetchColumn();
+        
+        // Kategorilere göre dağılım
+        $sql = "SELECT bk.ad, bk.renk, COUNT(*) as sayi 
+                FROM belgeler b 
+                LEFT JOIN belge_kategorileri bk ON b.kategori_id = bk.id 
+                WHERE b.aktif = 1";
+        
+        if ($kullanici_id) {
+            $sql .= " AND (b.gizlilik_seviyesi = 'genel' OR b.olusturan_id = :kullanici_id)";
+        }
+        
+        $sql .= " GROUP BY b.kategori_id, bk.ad, bk.renk ORDER BY sayi DESC";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $stats['kategoriler'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Son yüklenen belgeler
+        $sql = "SELECT b.baslik, b.olusturma_tarihi, bk.ad as kategori_adi
+                FROM belgeler b
+                LEFT JOIN belge_kategorileri bk ON b.kategori_id = bk.id
+                WHERE b.aktif = 1";
+        
+        if ($kullanici_id) {
+            $sql .= " AND (b.gizlilik_seviyesi = 'genel' OR b.olusturan_id = :kullanici_id)";
+        }
+        
+        $sql .= " ORDER BY b.olusturma_tarihi DESC LIMIT 5";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $stats['son_belgeler'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Dosya boyutu toplamı
+        $sql = "SELECT SUM(dosya_boyutu) as toplam_boyut FROM belgeler WHERE aktif = 1";
+        
+        if ($kullanici_id) {
+            $sql .= " AND (gizlilik_seviyesi = 'genel' OR olusturan_id = :kullanici_id)";
+        }
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $stats['toplam_boyut'] = $stmt->fetchColumn() ?: 0;
+        
+        return $stats;
+        
+    } catch(PDOException $e) {
+        return [
+            'toplam_belge' => 0,
+            'kategoriler' => [],
+            'son_belgeler' => [],
+            'toplam_boyut' => 0
+        ];
+    }
+}
+
+
+// Belge yükleme fonksiyonu
+ function belgeYukle($dosya, $kategori_id, $baslik, $kullanici_id, $aciklama = '', $belge_tarihi = null, $etiketler = [], $gizlilik_seviyesi = 'genel') {
+    global $pdo;
+    
+    // Debug için dosya bilgilerini logla
+    error_log("belgeYukle çağrıldı - Dosya: " . print_r($dosya, true));
+    error_log("Kategori ID: $kategori_id, Başlık: $baslik, Kullanıcı ID: $kullanici_id");
+    
+    // Dosya upload kontrolü
+    if (!isset($dosya['tmp_name']) || empty($dosya['tmp_name'])) {
+        return [
+            'success' => false,
+            'message' => 'Dosya yüklenmedi! tmp_name boş.'
+        ];
+    }
+    
+    if (!is_uploaded_file($dosya['tmp_name'])) {
+        return [
+            'success' => false,
+            'message' => 'Güvenlik hatası: Geçersiz dosya yükleme!'
+        ];
+    }
+    
+    // Dosya kontrolleri
+    $izinli_uzantilar = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'zip', 'rar'];
+    $max_boyut = 50 * 1024 * 1024; // 50MB
+    
+    $dosya_info = pathinfo($dosya['name']);
+    $uzanti = strtolower($dosya_info['extension'] ?? '');
+    
+    if (empty($uzanti)) {
+        return [
+            'success' => false,
+            'message' => 'Dosya uzantısı bulunamadı!'
+        ];
+    }
+    
+    if (!in_array($uzanti, $izinli_uzantilar)) {
+        return [
+            'success' => false,
+            'message' => "Bu dosya türü ($uzanti) desteklenmemektedir!"
+        ];
+    }
+    
+    if ($dosya['size'] > $max_boyut) {
+        return [
+            'success' => false,
+            'message' => 'Dosya boyutu 50MB\'dan büyük olamaz! Mevcut boyut: ' . round($dosya['size']/1024/1024, 2) . 'MB'
+        ];
+    }
+    
+    try {
+        $pdo->beginTransaction();
+        
+        // Benzersiz dosya adı oluştur
+        $belge_id = uniqid();
+        $yeni_dosya_adi = $belge_id . '.' . $uzanti;
+        $upload_dir = 'uploads/belgeler/';
+        
+        // Upload klasörü yoksa oluştur
+        if (!file_exists($upload_dir)) {
+            if (!mkdir($upload_dir, 0755, true)) {
+                throw new Exception('Upload klasörü oluşturulamadı: ' . $upload_dir);
+            }
+        }
+        
+        // Klasör yazılabilir mi kontrol et
+        if (!is_writable($upload_dir)) {
+            throw new Exception('Upload klasörü yazılabilir değil: ' . $upload_dir);
+        }
+        
+        $target_file = $upload_dir . $yeni_dosya_adi;
+        
+        // Dosyayı yükle
+        if (!move_uploaded_file($dosya['tmp_name'], $target_file)) {
+            $upload_error = error_get_last();
+            throw new Exception('Dosya yüklenirken hata oluştu! Hedef: ' . $target_file . ' Hata: ' . print_r($upload_error, true));
+        }
+        
+        // Dosya gerçekten oluştu mu kontrol et
+        if (!file_exists($target_file)) {
+            throw new Exception('Dosya yüklendi ancak hedef konumda bulunamadı: ' . $target_file);
+        }
+        
+        error_log("Dosya başarıyla yüklendi: " . $target_file);
+        
+        // Veritabanına kaydet
+        $sql = "INSERT INTO belgeler (
+                    id, kategori_id, baslik, aciklama, dosya_adi, orijinal_dosya_adi, 
+                    dosya_uzantisi, dosya_boyutu, mime_type, belge_tarihi, 
+                    etiketler, gizlilik_seviyesi, olusturan_id
+                ) VALUES (
+                    :id, :kategori_id, :baslik, :aciklama, :dosya_adi, :orijinal_dosya_adi,
+                    :dosya_uzantisi, :dosya_boyutu, :mime_type, :belge_tarihi,
+                    :etiketler, :gizlilik_seviyesi, :olusturan_id
+                )";
+        
+        $stmt = $pdo->prepare($sql);
+        
+        $data = [
+            'id' => $belge_id,
+            'kategori_id' => $kategori_id,
+            'baslik' => $baslik,
+            'aciklama' => $aciklama,
+            'dosya_adi' => $yeni_dosya_adi,
+            'orijinal_dosya_adi' => $dosya['name'],
+            'dosya_uzantisi' => $uzanti,
+            'dosya_boyutu' => $dosya['size'],
+            'mime_type' => $dosya['type'] ?? 'application/octet-stream',
+            'belge_tarihi' => $belge_tarihi ?: date('Y-m-d'),
+            'etiketler' => json_encode($etiketler),
+            'gizlilik_seviyesi' => $gizlilik_seviyesi,
+            'olusturan_id' => $kullanici_id
+        ];
+        
+        error_log("Veritabanı verisi: " . print_r($data, true));
+        
+        $result = $stmt->execute($data);
+        
+        if (!$result) {
+            $error_info = $stmt->errorInfo();
+            throw new Exception('Veritabanı kaydı başarısız! PDO Error: ' . print_r($error_info, true));
+        }
+        
+        $pdo->commit();
+        
+        return [
+            'success' => true,
+            'message' => 'Belge başarıyla yüklendi!',
+            'belge_id' => $belge_id
+        ];
+        
+    } catch(Exception $e) {
+        $pdo->rollback();
+        
+        // Yüklenen dosyayı sil
+        if (isset($target_file) && file_exists($target_file)) {
+            unlink($target_file);
+        }
+        
+        error_log("belgeYukle Hatası: " . $e->getMessage());
+        
+        return [
+            'success' => false,
+            'message' => 'Hata: ' . $e->getMessage()
+        ];
+    }
+}
+
+
+function odaSaatKilitle($room_id, $tarih, $saat, $aciklama = '', $kilit_turu = 'manuel') {
+    global $pdo;
+    
+    try {
+        // Önce zaten kilitli mi kontrol et
+        if (odaSaatKilitliMi($room_id, $tarih, $saat)) {
+            return ['success' => false, 'message' => 'Bu oda ve saat zaten kilitli'];
+        }
+        
+        // O saatte randevu var mı kontrol et
+        $randevu_check = $pdo->prepare("SELECT id FROM randevular WHERE room_id = ? AND DATE(randevu_tarihi) = ? AND TIME(randevu_tarihi) = ? AND aktif = 1");
+        $randevu_check->execute([$room_id, $tarih, $saat]);
+        
+        if ($randevu_check->fetch()) {
+            return ['success' => false, 'message' => 'Bu saatte aktif randevu bulunmaktadır'];
+        }
+        
+        $sql = "INSERT INTO room_time_locks (room_id, tarih, saat, kilit_turu, aciklama, kilitleyen_kullanici) 
+                VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt = $pdo->prepare($sql);
+        $result = $stmt->execute([$room_id, $tarih, $saat, $kilit_turu, $aciklama, $_SESSION['user_id'] ?? null]);
+        
+        if ($result) {
+            // Log kaydı
+            logOdaKilitleme($room_id, $tarih, $saat, 'kilitlendi', $aciklama);
+            return ['success' => true, 'message' => 'Oda ve saat başarıyla kilitlendi'];
+        }
+        
+        return ['success' => false, 'message' => 'Kilitleme işlemi başarısız'];
+        
+    } catch (PDOException $e) {
+        if ($e->getCode() == '23000') {
+            return ['success' => false, 'message' => 'Bu oda ve saat zaten kilitli'];
+        }
+        return ['success' => false, 'message' => 'Veritabanı hatası: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Oda ve saat kilidini aç
+ */
+function odaSaatKilidiniAc($room_id, $tarih, $saat) {
+    global $pdo;
+    
+    try {
+        $sql = "DELETE FROM room_time_locks WHERE room_id = ? AND tarih = ? AND saat = ?";
+        $stmt = $pdo->prepare($sql);
+        $result = $stmt->execute([$room_id, $tarih, $saat]);
+        
+        if ($result && $stmt->rowCount() > 0) {
+            // Log kaydı
+            logOdaKilitleme($room_id, $tarih, $saat, 'acildi', 'Kilit açıldı');
+            return ['success' => true, 'message' => 'Kilit başarıyla açıldı'];
+        }
+        
+        return ['success' => false, 'message' => 'Açılacak kilit bulunamadı'];
+        
+    } catch (PDOException $e) {
+        return ['success' => false, 'message' => 'Veritabanı hatası: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Oda ve saat kilitli mi kontrol et
+ */
+function odaSaatKilitliMi($room_id, $tarih, $saat) {
+    global $pdo;
+    
+    $sql = "SELECT id FROM room_time_locks WHERE room_id = ? AND tarih = ? AND saat = ? AND aktif = 1";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$room_id, $tarih, $saat]);
+    
+    return $stmt->fetch() ? true : false;
+}
+
+/**
+ * Belirli tarih için kilitli saatleri getir
+ */
+function getKilitliSaatler($room_id, $tarih) {
+    global $pdo;
+    
+    $sql = "SELECT 
+                rtl.*,
+                r.name as room_name
+            FROM room_time_locks rtl
+            JOIN rooms r ON rtl.room_id = r.id
+            WHERE rtl.room_id = ? AND rtl.tarih = ? AND rtl.aktif = 1
+            ORDER BY rtl.saat";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$room_id, $tarih]);
+    
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Tüm odalar için belirli tarihte kilitli saatleri getir
+ */
+function getTumKilitliSaatler($tarih) {
+    global $pdo;
+    
+    $sql = "SELECT 
+                rtl.*,
+                r.name as room_name
+            FROM room_time_locks rtl
+            JOIN rooms r ON rtl.room_id = r.id
+            WHERE rtl.tarih = ? AND rtl.aktif = 1
+            ORDER BY rtl.room_id, rtl.saat";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$tarih]);
+    
+    $locks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Room ID'ye göre grupla
+    $grouped = [];
+    foreach ($locks as $lock) {
+        $grouped[$lock['room_id']][] = $lock;
+    }
+    
+    return $grouped;
+}
+
+/**
+ * Kilitleme logları
+ */
+function logOdaKilitleme($room_id, $tarih, $saat, $islem, $aciklama = '') {
+    global $pdo;
+    
+    try {
+        $sql = "INSERT INTO room_time_lock_logs (room_id, tarih, saat, islem, aciklama, kullanici_id) 
+                VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$room_id, $tarih, $saat, $islem, $aciklama, $_SESSION['user_id'] ?? null]);
+    } catch (PDOException $e) {
+        error_log("Oda kilitleme log hatası: " . $e->getMessage());
+    }
+}
+
+/**
+ * Toplu kilitleme - birden fazla saat için
+ */
+function topluOdaKilitle($room_id, $tarih, $saatler, $aciklama = '', $kilit_turu = 'manuel') {
+    $basarili = 0;
+    $hatali = 0;
+    $mesajlar = [];
+    
+    foreach ($saatler as $saat) {
+        $result = odaSaatKilitle($room_id, $tarih, $saat, $aciklama, $kilit_turu);
+        if ($result['success']) {
+            $basarili++;
+        } else {
+            $hatali++;
+            $mesajlar[] = "Saat $saat: " . $result['message'];
+        }
+    }
+    
+    return [
+        'success' => $basarili > 0,
+        'basarili' => $basarili,
+        'hatali' => $hatali,
+        'mesajlar' => $mesajlar,
+        'message' => "$basarili saat kilitlendi, $hatali saat kilitlenemedi"
+    ];
+}
+
+/**
+ * Randevu ekleme sırasında çakışma kontrolü (kilitli saatler dahil)
+ */
+function randevuEklemeKontrol($room_id, $randevu_tarihi) {
+    $tarih = date('Y-m-d', strtotime($randevu_tarihi));
+    $saat = date('H:i:s', strtotime($randevu_tarihi));
+    
+    // Kilitli mi kontrol et
+    if (odaSaatKilitliMi($room_id, $tarih, $saat)) {
+        return ['success' => false, 'message' => 'Bu oda ve saat kilitlidir'];
+    }
+    
+    // Normal çakışma kontrolü
+    global $pdo;
+    $sql = "SELECT id FROM randevular WHERE room_id = ? AND randevu_tarihi = ? AND aktif = 1";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$room_id, $randevu_tarihi]);
+    
+    if ($stmt->fetch()) {
+        return ['success' => false, 'message' => 'Bu saatte başka bir randevu bulunmaktadır'];
+    }
+    
+    return ['success' => true, 'message' => 'Randevu eklenebilir'];
+}
+
+
+// Dosya boyutunu formatla
+function formatFileSize($bytes, $precision = 2) {
+    $units = array('B', 'KB', 'MB', 'GB', 'TB');
+    
+    for ($i = 0; $bytes > 1024 && $i < count($units) - 1; $i++) {
+        $bytes /= 1024;
+    }
+    
+    return round($bytes, $precision) . ' ' . $units[$i];
+}
+
+// Belge kategorisi ekleme
+function belgeKategorisiEkle($ad, $aciklama, $icon = 'fas fa-file-alt', $renk = '#007bff') {
+    global $pdo;
+    
+    try {
+        $sql = "INSERT INTO belge_kategorileri (ad, aciklama, icon, renk) VALUES (:ad, :aciklama, :icon, :renk)";
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([
+            'ad' => $ad,
+            'aciklama' => $aciklama,
+            'icon' => $icon,
+            'renk' => $renk
+        ]);
+    } catch(PDOException $e) {
+        return false;
+    }
+}
+
+// Hatırlatma ekleme
+function belgeHatirlatmaEkle($belge_id, $kullanici_id, $hatirlatma_tarihi, $mesaj, $bildirim_turu = 'sistem') {
+    global $pdo;
+    
+    try {
+        $sql = "INSERT INTO belge_hatirlatmalari (belge_id, kullanici_id, hatirlatma_tarihi, mesaj, bildirim_turu)
+                VALUES (:belge_id, :kullanici_id, :hatirlatma_tarihi, :mesaj, :bildirim_turu)";
+        
+        $stmt = $pdo->prepare($sql);
+        return $stmt->execute([
+            'belge_id' => $belge_id,
+            'kullanici_id' => $kullanici_id,
+            'hatirlatma_tarihi' => $hatirlatma_tarihi,
+            'mesaj' => $mesaj,
+            'bildirim_turu' => $bildirim_turu
+        ]);
+    } catch(PDOException $e) {
+        return false;
+    }
+}
 
 
 // Yardımcı Fonksiyonlar
