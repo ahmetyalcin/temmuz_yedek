@@ -2673,7 +2673,112 @@ function getRooms($aktif_only = true) {
 }
 
 
+// Bu fonksiyonu functions.php dosyanızdaki getRoomSchedule fonksiyonu ile değiştirin
+
 function getRoomSchedule($date) {
+    global $pdo;
+    try {
+        // Get all active rooms
+        $rooms_sql = "SELECT * FROM rooms WHERE aktif = TRUE ORDER BY type, name";
+        $rooms_stmt = $pdo->query($rooms_sql);
+        $rooms = $rooms_stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $schedule = [];
+        
+        foreach ($rooms as $room) {
+            $sql = "SELECT 
+                r.id as room_id, 
+                r.name as room_name, 
+                r.type as room_type,
+                ran.id as randevu_id, 
+                ran.randevu_tarihi, 
+                ran.durum,
+                ran.evaluation_type,
+                ran.evaluation_notes,
+                CONCAT(d.ad, ' ', d.soyad) as danisan_adi,
+                CONCAT(p.ad, ' ', p.soyad) as terapist_adi,
+                st.ad as seans_turu,
+                st.evaluation_interval,
+                st.sure,
+                (
+                    SELECT COUNT(*) 
+                    FROM randevular prev 
+                    WHERE prev.satis_id = ran.satis_id 
+                    AND prev.aktif = 1 
+                    AND prev.randevu_tarihi <= ran.randevu_tarihi
+                ) as seans_sirasi
+            FROM rooms r
+            LEFT JOIN randevular ran ON ran.room_id = r.id 
+                AND DATE(ran.randevu_tarihi) = :date
+                AND ran.aktif = 1
+            LEFT JOIN danisanlar d ON d.id = ran.danisan_id
+            LEFT JOIN personel p ON p.id = ran.personel_id
+            LEFT JOIN seans_turleri st ON st.id = ran.seans_turu_id
+            WHERE r.id = :room_id
+            ORDER BY ran.randevu_tarihi ASC";
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                'date' => $date,
+                'room_id' => $room['id']
+            ]);
+            
+            $schedule[$room['id']] = [
+                'room_info' => [
+                    'id' => $room['id'],
+                    'name' => $room['name'],
+                    'type' => $room['type']
+                ],
+                'appointments' => []
+            ];
+            
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                if ($row['randevu_id']) {
+                    $time_slot = date('H:i', strtotime($row['randevu_tarihi']));
+                    
+                    // Calculate evaluation information
+                    $evaluation_info = '';
+                    $evaluation_type = '';
+                    $evaluation_number = null;
+                    
+                    if ($row['evaluation_interval'] > 0) {
+                        $session_number = $row['seans_sirasi'];
+                        
+                        if ($session_number == 1) {
+                            $evaluation_type = 'initial';
+                            $evaluation_info = 'İlk Değerlendirme';
+                        } elseif ($session_number % $row['evaluation_interval'] == 0) {
+                            $evaluation_type = 'progress';
+                            $evaluation_number = floor($session_number / $row['evaluation_interval']);
+                            $evaluation_info = $evaluation_number . '. Değerlendirme';
+                        }
+                    }
+                    
+                    $schedule[$room['id']]['appointments'][$time_slot] = [
+                        'id' => $row['randevu_id'],
+                        'danisan' => $row['danisan_adi'],
+                        'terapist' => $row['terapist_adi'],
+                        'seans_turu' => $row['seans_turu'],
+                        'durum' => $row['durum'],
+                        'evaluation_type' => $evaluation_type,
+                        'evaluation_number' => $evaluation_number,
+                        'evaluation_notes' => $row['evaluation_notes'],
+                        'sure' => $row['sure'],
+                        'seans_sirasi' => $row['seans_sirasi'], // Bu satır eklendi
+                        'evaluation_info' => $evaluation_info
+                    ];
+                }
+            }
+        }
+        
+        return $schedule;
+    } catch(PDOException $e) {
+        error_log("Oda programı getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+function getRoomSchedule11($date) {
     global $pdo;
     try {
         // Get all active rooms
