@@ -340,7 +340,7 @@ $kilitli_saatler = getTumKilitliSaatler($current_date);
                                     <label for="randevu_saat" class="form-label">Saat</label>
                                     <select name="randevu_saat" id="randevu_saat" class="form-select" required>
                                         <option value="">Saat seçin...</option>
-                                        <?php for ($i = 8; $i <= 19; $i++): ?>
+                                        <?php for ($i = 8; $i <= 21; $i++): ?>
                                             <option value="<?php echo sprintf('%02d:00', $i); ?>">
                                                 <?php echo sprintf('%02d:00', $i); ?>
                                             </option>
@@ -399,470 +399,750 @@ $kilitli_saatler = getTumKilitliSaatler($current_date);
 
     <?php include 'partials/footer-scripts.php'; ?>
 
-    <script>
-    // Global değişkenler
-    var appointmentModal;
-    var currentRoomLockedTimes = [];
-    var currentAppointmentId = null;
+   <!-- room_schedule.php için düzeltilmiş JavaScript kodu -->
+<script>
+// Global değişkenler
+var appointmentModal;
+var currentRoomLockedTimes = [];
+var currentAppointmentId = null;
+var draggedAppointment = null;
 
-    // DOM yüklendiğinde çalışacak fonksiyon
-    document.addEventListener('DOMContentLoaded', function() {
-        appointmentModal = new bootstrap.Modal(document.getElementById('appointmentModal'));
-        initializeEventListeners();
-    });
+// DOM yüklendiğinde çalışacak fonksiyon
+document.addEventListener('DOMContentLoaded', function() {
+    // Modal ID'yi düzelt - HTML'de appointmentModal olarak tanımlanmış
+    appointmentModal = new bootstrap.Modal(document.getElementById('appointmentModal'));
+    initializeEventListeners();
+    initializeDragAndDrop();
+});
 
-    // Event listener'ları başlat
-    function initializeEventListeners() {
-        // Danışan seçildiğinde hidden fieldları doldur
-        const danisanSatisSelect = document.getElementById('danisan_satis_id');
-        if (danisanSatisSelect) {
-            danisanSatisSelect.addEventListener('change', function() {
-                const selectedOption = this.options[this.selectedIndex];
-                const danisanId = selectedOption.getAttribute('data-danisan-id');
-                const seansTuruId = selectedOption.getAttribute('data-seans-turu-id');
-                const satisId = selectedOption.value;
+// Event listener'ları başlat
+function initializeEventListeners() {
+    // Danışan seçildiğinde hidden fieldları doldur
+    const danisanSatisSelect = document.getElementById('danisan_satis_id');
+    if (danisanSatisSelect) {
+        danisanSatisSelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const danisanId = selectedOption.getAttribute('data-danisan-id');
+            const seansTuruId = selectedOption.getAttribute('data-seans-turu-id');
+            const satisId = selectedOption.value;
+            
+            // Hidden fieldları doldur
+            document.getElementById('danisan_id').value = danisanId || '';
+            document.getElementById('seans_turu_id').value = seansTuruId || '';
+            document.getElementById('satis_id').value = satisId || '';
+            
+            // Seçilen paketi göster
+            if (selectedOption.value) {
+                const packageText = selectedOption.textContent.split(' - ')[1] || 'Paket bilgisi';
+                document.getElementById('selectedPackage').innerHTML = `<strong>${packageText}</strong>`;
                 
-                // Hidden fieldları doldur
-                document.getElementById('danisan_id').value = danisanId || '';
-                document.getElementById('seans_turu_id').value = seansTuruId || '';
-                document.getElementById('satis_id').value = satisId || '';
-                
-                // Seçilen paketi göster
-                if (selectedOption.value) {
-                    const packageText = selectedOption.textContent.split(' - ')[1] || 'Paket bilgisi';
-                    document.getElementById('selectedPackage').innerHTML = `<strong>${packageText}</strong>`;
-                    
-                    // Danışan detaylarını yükle
-                    if (satisId) {
-                        loadDanisanDetails(satisId);
-                    }
-                } else {
-                    document.getElementById('selectedPackage').innerHTML = '<em class="text-muted">Danışan seçince görünecek</em>';
-                    document.getElementById('appointmentDetails').style.display = 'none';
+                // Danışan detaylarını yükle
+                if (satisId) {
+                    loadDanisanDetails(satisId);
                 }
-            });
-        }
-
-        // Oda seçildiğinde kilitli saatleri kontrol et
-        const roomSelect = document.getElementById('room_id');
-        if (roomSelect) {
-            roomSelect.addEventListener('change', function() {
-                const roomId = this.value;
-                const selectedDate = document.getElementById('randevu_tarih').value;
-                
-                if (roomId && selectedDate) {
-                    loadRoomLockedTimes(roomId, selectedDate);
-                } else {
-                    resetTimeOptions();
-                }
-            });
-        }
-
-        // Tarih değiştiğinde de kilitli saatleri kontrol et
-        const dateInput = document.getElementById('randevu_tarih');
-        if (dateInput) {
-            dateInput.addEventListener('change', function() {
-                const roomId = document.getElementById('room_id').value;
-                const selectedDate = this.value;
-                
-                if (roomId && selectedDate) {
-                    loadRoomLockedTimes(roomId, selectedDate);
-                } else {
-                    resetTimeOptions();
-                }
-            });
-        }
-
-        // Drag and drop event listener'larını ekle
-        initializeDragAndDrop();
-    }
-
-    // Randevu ekleme fonksiyonu
-    function handleAppointmentAdd(datetime, roomId) {
-        const form = document.getElementById('appointmentForm');
-        if (!form) {
-            console.error('appointmentForm bulunamadı!');
-            return;
-        }
-        
-        form.reset();
-        
-        // Form elemanlarının varlığını kontrol et
-        const ajaxActionInput = form.querySelector('input[name="ajax_action"]');
-        const idInput = form.querySelector('input[name="id"]');
-        const roomSelect = form.querySelector('select[name="room_id"]');
-        const dateInput = form.querySelector('input[name="randevu_tarih"]');
-        const timeSelect = form.querySelector('select[name="randevu_saat"]');
-        
-        if (ajaxActionInput) ajaxActionInput.value = 'randevu_ekle';
-        if (idInput) idInput.value = '';
-        if (roomSelect) roomSelect.value = roomId;
-        
-        const [date, time] = datetime.split(' ');
-        if (dateInput) dateInput.value = date;
-        if (timeSelect) timeSelect.value = time;
-        
-        // Oda seçili olduğu için kilitli saatleri yükle
-        if (roomId && date) {
-            loadRoomLockedTimes(roomId, date);
-        }
-        
-        // Diğer alanları sıfırla
-        const danisanSatisSelect = document.getElementById('danisan_satis_id');
-        if (danisanSatisSelect) {
-            danisanSatisSelect.value = '';
-        }
-        
-        const selectedPackage = document.getElementById('selectedPackage');
-        if (selectedPackage) {
-            selectedPackage.innerHTML = '<em class="text-muted">Danışan seçince görünecek</em>';
-        }
-        
-        const appointmentDetails = document.getElementById('appointmentDetails');
-        if (appointmentDetails) {
-            appointmentDetails.style.display = 'none';
-        }
-        
-        const deleteBtn = document.getElementById('deleteAppointmentBtn');
-        if (deleteBtn) {
-            deleteBtn.style.display = 'none';
-        }
-        
-        if (appointmentModal) {
-            appointmentModal.show();
-        }
-    }
-
-    // Randevu düzenleme fonksiyonu
-    function handleAppointmentEdit(appointmentId, event) {
-        if (event) event.stopPropagation();
-
-        fetch('ajax/get_appointment.php?id=' + appointmentId)
-            .then(response => response.json())
-            .then(data => {
-                if (!data.success) {
-                    alert('Randevu bilgileri alınamadı: ' + data.message);
-                    return;
-                }
-                const appointment = data.data;
-                
-                const form = document.getElementById('appointmentForm');
-                form.querySelector('input[name="ajax_action"]').value = 'randevu_guncelle';
-                form.querySelector('input[name="id"]').value = appointment.id;
-                
-                // Danışan satış ID'sini bul ve seç
-                const danisanSatisSelect = form.querySelector('select[name="danisan_satis_id"]');
-                const matchingOption = Array.from(danisanSatisSelect.options).find(option => 
-                    option.getAttribute('data-danisan-id') == appointment.danisan_id &&
-                    option.getAttribute('data-seans-turu-id') == appointment.seans_turu_id
-                );
-                
-                if (matchingOption) {
-                    danisanSatisSelect.value = matchingOption.value;
-                    // Change event'ini tetikle
-                    danisanSatisSelect.dispatchEvent(new Event('change'));
-                }
-                
-                form.querySelector('select[name="personel_id"]').value = appointment.personel_id;
-                form.querySelector('select[name="room_id"]').value = appointment.room_id;
-
-                const [datePart, timePart] = appointment.randevu_tarihi.split(' ');
-                form.querySelector('input[name="randevu_tarih"]').value = datePart;
-                form.querySelector('select[name="randevu_saat"]').value = timePart.substring(0, 5);
-                form.querySelector('textarea[name="notlar"]').value = appointment.notlar || '';
-
-                // Oda ve tarih seçili olduğu için kilitli saatleri yükle
-                if (appointment.room_id && datePart) {
-                    loadRoomLockedTimes(appointment.room_id, datePart);
-                }
-
-                currentAppointmentId = appointmentId;
-                document.getElementById('deleteAppointmentBtn').style.display = 'inline-block';
-                appointmentModal.show();
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Bir hata oluştu!');
-            });
-    }
-
-    // Tarih navigasyon fonksiyonları
-    function changeDate(days) {
-        const currentDate = new Date(document.getElementById('schedule-date').value);
-        currentDate.setDate(currentDate.getDate() + days);
-        const newDate = currentDate.toISOString().split('T')[0];
-        window.location.href = 'room_schedule.php?date=' + newDate;
-    }
-
-    // Randevu kaydetme fonksiyonu
-    function saveAppointment() {
-        const form = document.getElementById('appointmentForm');
-        const formData = new FormData(form);
-        
-        // Gerekli alanların dolu olduğunu kontrol et
-        const requiredFields = ['danisan_satis_id', 'personel_id', 'room_id', 'randevu_tarih', 'randevu_saat'];
-        let hasError = false;
-        
-        for (const field of requiredFields) {
-            const element = form.querySelector(`[name="${field}"]`);
-            if (!element || !element.value.trim()) {
-                alert(`${field} alanı zorunludur!`);
-                hasError = true;
-                break;
-            }
-        }
-        
-        if (hasError) return;
-        
-        // Kilitli saat kontrolü
-        const selectedTime = formData.get('randevu_saat');
-        if (currentRoomLockedTimes.includes(selectedTime)) {
-            alert('Seçilen saat bu oda için kilitli! Lütfen başka bir saat seçin.');
-            return;
-        }
-        
-        // Randevu tarih/saat formatını düzenle
-        const tarih = formData.get('randevu_tarih');
-        const saat = formData.get('randevu_saat');
-        const randevuTarihi = tarih + ' ' + saat + ':00';
-        
-        // FormData'yı güncelle
-        formData.delete('randevu_tarih');
-        formData.delete('randevu_saat');
-        formData.append('randevu_tarihi', randevuTarihi);
-        
-        fetch('ajax/save_appointment.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Randevu başarıyla kaydedildi!');
-                appointmentModal.hide();
-                location.reload();
             } else {
-                alert('Hata: ' + (data.message || 'Randevu kaydedilemedi'));
+                document.getElementById('selectedPackage').innerHTML = '<em class="text-muted">Danışan seçince görünecek</em>';
+                document.getElementById('appointmentDetails').style.display = 'none';
             }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Bir hata oluştu!');
         });
     }
 
-    // Randevu silme
-    function deleteCurrentAppointment() {
-        if (!currentAppointmentId) {
-            alert('Silinecek randevu bulunamadı!');
+    // Oda seçildiğinde kilitli saatleri kontrol et
+    const roomSelect = document.getElementById('room_id');
+    if (roomSelect) {
+        roomSelect.addEventListener('change', function() {
+            const roomId = this.value;
+            const selectedDate = document.getElementById('randevu_tarih').value;
+            
+            if (roomId && selectedDate) {
+                loadRoomLockedTimes(roomId, selectedDate);
+            } else {
+                resetTimeOptions();
+            }
+        });
+    }
+
+    // Tarih değiştiğinde de kilitli saatleri kontrol et
+    const dateInput = document.getElementById('randevu_tarih');
+    if (dateInput) {
+        dateInput.addEventListener('change', function() {
+            const roomId = document.getElementById('room_id').value;
+            const selectedDate = this.value;
+            
+            if (roomId && selectedDate) {
+                loadRoomLockedTimes(roomId, selectedDate);
+            } else {
+                resetTimeOptions();
+            }
+        });
+    }
+}
+
+// SÜRÜKLE BIRAK FONKSİYONLARI
+function initializeDragAndDrop() {
+    // Tüm randevuları sürüklenebilir yap
+    document.querySelectorAll('.appointment').forEach(appointment => {
+        appointment.addEventListener('dragstart', handleDragStart);
+        appointment.addEventListener('dragend', handleDragEnd);
+    });
+
+    // Tüm oda hücrelerini bırakma alanı yap (kilitli olanlar hariç)
+    document.querySelectorAll('.room-cell:not(.locked)').forEach(cell => {
+        cell.addEventListener('dragover', handleDragOver);
+        cell.addEventListener('dragleave', handleDragLeave);
+        cell.addEventListener('drop', handleDrop);
+    });
+}
+
+function handleDragStart(e) {
+    draggedAppointment = e.target;
+    
+    // Randevu bilgilerini sakla
+    const appointmentData = {
+        id: draggedAppointment.dataset.appointmentId,
+        originalTime: draggedAppointment.dataset.time,
+        originalRoom: draggedAppointment.closest('.room-cell')?.dataset.roomId
+    };
+    
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('application/json', JSON.stringify(appointmentData));
+    
+    // Görsel efekt
+    draggedAppointment.classList.add('dragging');
+    draggedAppointment.style.opacity = '0.5';
+}
+
+function handleDragEnd(e) {
+    // Görsel efektleri temizle
+    e.target.classList.remove('dragging');
+    e.target.style.opacity = '';
+    
+    // Tüm hücrelerdeki vurgu efektlerini temizle
+    document.querySelectorAll('.room-cell').forEach(cell => {
+        cell.classList.remove('drag-over');
+    });
+    
+    draggedAppointment = null;
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    // Hedef hücreyi vurgula
+    const cell = e.currentTarget;
+    if (!cell.classList.contains('drag-over')) {
+        cell.classList.add('drag-over');
+    }
+}
+
+function handleDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+
+// GÜNCELLENEN handleDrop - DANIŞAN KONTROLÜ DAHİL
+async function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const cell = e.currentTarget;
+    cell.classList.remove('drag-over');
+
+    if (!draggedAppointment) {
+        console.error('Sürüklenen randevu bulunamadı!');
+        return;
+    }
+
+    // Hedef bilgilerini al
+    const newRoomId = cell.dataset.roomId;
+    const newTime = cell.dataset.time;
+    const currentDate = document.getElementById('schedule-date').value;
+    const appointmentId = draggedAppointment.dataset.appointmentId;
+    
+    if (!appointmentId || !newRoomId || !newTime) {
+        console.error('Eksik bilgi:', { appointmentId, newRoomId, newTime });
+        alert('Randevu taşıma için gerekli bilgiler eksik!');
+        return;
+    }
+
+    // Aynı yere bırakıldıysa işlem yapma
+    const originalCell = draggedAppointment.closest('.room-cell');
+    if (originalCell && originalCell.dataset.roomId === newRoomId && originalCell.dataset.time === newTime) {
+        return;
+    }
+
+    // Önce mevcut randevunun danışan bilgisini alalım
+    try {
+        showLoading();
+        
+        const appointmentResponse = await fetch('ajax/get_appointment.php?id=' + appointmentId);
+        const appointmentData = await appointmentResponse.json();
+        
+        if (!appointmentData.success) {
+            hideLoading();
+            alert('Randevu bilgileri alınamadı!');
             return;
         }
         
-        if (!confirm('Bu randevuyu silmek istediğinizden emin misiniz?')) {
+        const danisanId = appointmentData.data.danisan_id;
+        const newDateTime = `${currentDate} ${newTime}:00`;
+        
+        // Çakışma kontrolü yap (hem oda hem danışan)
+        const conflictCheck = await checkConflictsWithDanisan(newRoomId, newDateTime, appointmentId, danisanId);
+        
+        hideLoading();
+        
+        if (conflictCheck.hasConflict) {
+            if (conflictCheck.danisanConflict) {
+                alert(conflictCheck.message);
+            } else if (conflictCheck.roomConflict) {
+                alert('Bu oda ve saatte başka bir randevu bulunmaktadır!');
+            }
             return;
         }
         
-        fetch('ajax/delete_appointment.php', {
+        // Kullanıcıya onay sor
+        if (!confirm(`Randevuyu ${newTime} saatine taşımak istediğinizden emin misiniz?`)) {
+            return;
+        }
+
+        // Randevuyu güncelle
+        updateAppointmentRoom(appointmentId, newRoomId, newTime, currentDate);
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Hata:', error);
+        alert('Bir hata oluştu!');
+    }
+}
+
+// YENİ FONKSİYON: Danışan dahil çakışma kontrolü
+async function checkConflictsWithDanisan(roomId, datetime, appointmentId, danisanId) {
+    try {
+        const requestData = {
+            room_id: roomId,
+            datetime: datetime,
+            appointment_id: appointmentId || '',
+            danisan_id: danisanId || ''
+        };
+        
+        console.log('Çakışma kontrolü isteği:', requestData);
+        
+        const response = await fetch('ajax/check_conflicts.php', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ id: currentAppointmentId })
-        })
+            body: JSON.stringify(requestData)
+        });
+        
+        // Önce response text'i alalım
+        const responseText = await response.text();
+        console.log('Response text:', responseText);
+        
+        // JSON parse edelim
+        try {
+            const data = JSON.parse(responseText);
+            return {
+                hasConflict: data.hasConflict || false,
+                roomConflict: data.roomConflict || false,
+                danisanConflict: data.danisanConflict || false,
+                message: data.message || ''
+            };
+        } catch (parseError) {
+            console.error('JSON parse hatası:', parseError);
+            console.error('Response text:', responseText);
+            alert('Sunucu yanıtı işlenemedi. Konsolu kontrol edin.');
+            return { hasConflict: true, message: 'Çakışma kontrolü yapılamadı!' };
+        }
+    } catch (error) {
+        console.error('Çakışma kontrolü hatası:', error);
+        return { hasConflict: true, message: 'Çakışma kontrolü yapılamadı!' };
+    }
+}
+
+function updateAppointmentRoom(appointmentId, roomId, time, date) {
+    const formData = new FormData();
+    formData.append('appointment_id', appointmentId);
+    formData.append('room_id', roomId);
+    formData.append('time', time);
+    formData.append('date', date);
+
+    // Loading göstergesi
+    showLoading();
+
+    fetch('ajax/update_appointment_room.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        hideLoading();
+        
+        if (data.success) {
+            showSuccessMessage('Randevu başarıyla taşındı!');
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            alert('Hata: ' + (data.message || 'Randevu güncellenemedi'));
+        }
+    })
+    .catch(error => {
+        hideLoading();
+        console.error('AJAX hatası:', error);
+        alert('Bir hata oluştu! Lütfen tekrar deneyin.');
+    });
+}
+
+// RANDEVU EKLEME FONKSİYONU
+function handleAppointmentAdd(datetime, roomId) {
+    const form = document.getElementById('appointmentForm');
+    if (!form) {
+        console.error('appointmentForm bulunamadı!');
+        return;
+    }
+    
+    form.reset();
+    
+    // Form elemanlarını doldur
+    const ajaxActionInput = form.querySelector('input[name="ajax_action"]');
+    const idInput = form.querySelector('input[name="id"]');
+    const roomSelect = form.querySelector('select[name="room_id"]');
+    const dateInput = form.querySelector('input[name="randevu_tarih"]');
+    const timeSelect = form.querySelector('select[name="randevu_saat"]');
+    
+    if (ajaxActionInput) ajaxActionInput.value = 'randevu_ekle';
+    if (idInput) idInput.value = '';
+    if (roomSelect) roomSelect.value = roomId;
+    
+    const [date, time] = datetime.split(' ');
+    if (dateInput) dateInput.value = date;
+    
+    // Saati doğru formatta set et
+    if (timeSelect) {
+        const formattedTime = time;
+        console.log('Saat set ediliyor:', formattedTime);
+
+
+        // Önce select'i temizle ve varsayılan option'ı koru
+        const defaultOption = timeSelect.querySelector('option[value=""]');
+        
+        // Tüm option'ları kontrol et
+        let found = false;
+        Array.from(timeSelect.options).forEach(option => {
+            if (option.value === formattedTime) {
+                option.selected = true;
+                found = true;
+            } else {
+                option.selected = false;
+            }
+        });
+        
+        // Eğer bulunamadıysa ve varsayılan dışında bir saat ise, hata ver
+        if (!found && formattedTime !== ':00') {
+            console.error('Saat bulunamadı:', formattedTime);
+            // En yakın saati seç
+            const hour = parseInt(time.split(':')[0]);
+            if (hour >= 8 && hour <= 21) {
+                timeSelect.value = formattedTime;
+            }
+        }
+    }
+    
+    // Oda seçili olduğu için kilitli saatleri yükle
+    if (roomId && date) {
+        loadRoomLockedTimes(roomId, date);
+    }
+    
+    // Diğer alanları sıfırla
+    document.getElementById('danisan_satis_id').value = '';
+    document.getElementById('selectedPackage').innerHTML = '<em class="text-muted">Danışan seçince görünecek</em>';
+    document.getElementById('appointmentDetails').style.display = 'none';
+    document.getElementById('deleteAppointmentBtn').style.display = 'none';
+    
+    currentAppointmentId = null;
+    
+    if (appointmentModal) {
+        appointmentModal.show();
+    } else {
+        console.error('Modal bulunamadı!');
+    }
+}
+
+// RANDEVU DÜZENLEME FONKSİYONU
+function handleAppointmentEdit(appointmentId, event) {
+    if (event) event.stopPropagation();
+
+    showLoading();
+
+    fetch('ajax/get_appointment.php?id=' + appointmentId)
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
-                alert('Randevu başarıyla silindi!');
-                appointmentModal.hide();
-                location.reload();
-            } else {
-                alert('Hata: ' + (data.message || 'Randevu silinemedi'));
+            hideLoading();
+            
+            if (!data.success) {
+                alert('Randevu bilgileri alınamadı: ' + data.message);
+                return;
             }
+            
+            const appointment = data.data;
+            const form = document.getElementById('appointmentForm');
+            
+            // Form alanlarını doldur
+            form.querySelector('input[name="ajax_action"]').value = 'randevu_guncelle';
+            form.querySelector('input[name="id"]').value = appointment.id;
+            
+            // Hidden field'ları direkt doldur (danışan her zaman aynı kalacak)
+            document.getElementById('danisan_id').value = appointment.danisan_id;
+            document.getElementById('seans_turu_id').value = appointment.seans_turu_id || '';
+            document.getElementById('satis_id').value = appointment.satis_id || '';
+            
+            // Danışan satış select'ini kontrol et
+            const danisanSatisSelect = form.querySelector('select[name="danisan_satis_id"]');
+            let matchingOption = Array.from(danisanSatisSelect.options).find(option => 
+                option.getAttribute('data-danisan-id') == appointment.danisan_id
+            );
+            
+            // Eğer mevcut listede yoksa (paket süresi dolmuş vs), yeni bir option ekle
+            if (!matchingOption && appointment.danisan_adi) {
+                const newOption = document.createElement('option');
+                newOption.value = appointment.satis_id || appointment.id;
+                newOption.setAttribute('data-danisan-id', appointment.danisan_id);
+                newOption.setAttribute('data-seans-turu-id', appointment.seans_turu_id || '');
+                newOption.textContent = appointment.danisan_adi + ' (Mevcut Randevu)';
+                danisanSatisSelect.appendChild(newOption);
+                matchingOption = newOption;
+            }
+            
+            if (matchingOption) {
+                danisanSatisSelect.value = matchingOption.value;
+                // Package bilgisini göster
+                const packageText = appointment.paket_adi || 'Paket bilgisi';
+                document.getElementById('selectedPackage').innerHTML = `<strong>${packageText}</strong>`;
+                
+                // Detayları yükle
+                if (appointment.satis_id) {
+                    loadDanisanDetails(appointment.satis_id);
+                }
+            }
+            
+            // Diğer form alanlarını doldur
+            form.querySelector('select[name="personel_id"]').value = appointment.personel_id;
+            form.querySelector('select[name="room_id"]').value = appointment.room_id;
+
+            const [datePart, timePart] = appointment.randevu_tarihi.split(' ');
+            form.querySelector('input[name="randevu_tarih"]').value = datePart;
+            form.querySelector('select[name="randevu_saat"]').value = timePart.substring(0, 5);
+            form.querySelector('textarea[name="notlar"]').value = appointment.notlar || '';
+
+            // Oda ve tarih seçili olduğu için kilitli saatleri yükle
+            if (appointment.room_id && datePart) {
+                loadRoomLockedTimes(appointment.room_id, datePart);
+            }
+
+            currentAppointmentId = appointmentId;
+            document.getElementById('deleteAppointmentBtn').style.display = 'inline-block';
+            
+            appointmentModal.show();
         })
         .catch(error => {
+            hideLoading();
             console.error('Error:', error);
             alert('Bir hata oluştu!');
         });
-    }
+}
 
-    // Oda kilitli saatlerini yükle
-    function loadRoomLockedTimes(roomId, date) {
-        fetch(`ajax/get_room_locked_times.php?room_id=${roomId}&date=${date}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    currentRoomLockedTimes = data.locked_times.map(item => item.time);
-                    updateTimeOptions();
-                    
-                    // Bilgi mesajını göster
-                    const infoElement = document.getElementById('lockedTimeInfo');
-                    if (currentRoomLockedTimes.length > 0) {
-                        infoElement.style.display = 'block';
-                    } else {
-                        infoElement.style.display = 'none';
-                    }
-                } else {
-                    console.error('Kilitli saatler yüklenemedi:', data.message);
-                    resetTimeOptions();
-                }
-            })
-            .catch(error => {
-                console.error('Kilitli saatler yüklenirken hata:', error);
-                resetTimeOptions();
-            });
-    }
-
-    // Saat seçeneklerini güncelle (kilitli saatleri işaretle)
-    function updateTimeOptions() {
-        const timeSelect = document.getElementById('randevu_saat');
-        if (!timeSelect) return;
-
-        // Tüm seçenekleri normal duruma getir
-        Array.from(timeSelect.options).forEach(option => {
-            if (option.value) {
-                option.classList.remove('locked-time-option');
-                option.disabled = false;
-                option.style.backgroundColor = '';
-                option.style.color = '';
-                option.textContent = option.textContent.replace(' 🔒', '');
-            }
-        });
-
-        // Kilitli saatleri işaretle ve devre dışı bırak
-        currentRoomLockedTimes.forEach(lockedTime => {
-            const option = timeSelect.querySelector(`option[value="${lockedTime}"]`);
-            if (option) {
-                option.classList.add('locked-time-option');
-                option.disabled = true;
-                option.style.backgroundColor = '#e9ecef';
-                option.style.color = '#6c757d';
-                option.textContent = option.textContent.replace(' 🔒', '') + ' 🔒';
-            }
-        });
-
-        // Eğer seçili saat kilitli ise, seçimi temizle
-        if (timeSelect.value && currentRoomLockedTimes.includes(timeSelect.value)) {
-            timeSelect.value = '';
-            alert('Seçilen saat bu oda için kilitli! Lütfen başka bir saat seçin.');
+// GÜNCELLENEN saveAppointment - DANIŞAN KONTROLÜ DAHİL
+async function saveAppointment() {
+    const form = document.getElementById('appointmentForm');
+    const formData = new FormData(form);
+    
+    // Validasyon
+    const requiredFields = ['danisan_satis_id', 'personel_id', 'room_id', 'randevu_tarih', 'randevu_saat'];
+    for (const field of requiredFields) {
+        const element = form.querySelector(`[name="${field}"]`);
+        if (!element || !element.value.trim()) {
+            alert(`Lütfen tüm zorunlu alanları doldurun!`);
+            return;
         }
     }
-
-    // Saat seçeneklerini sıfırla
-    function resetTimeOptions() {
-        const timeSelect = document.getElementById('randevu_saat');
-        if (!timeSelect) return;
-
-        Array.from(timeSelect.options).forEach(option => {
-            if (option.value) {
-                option.classList.remove('locked-time-option');
-                option.disabled = false;
-                option.style.backgroundColor = '';
-                option.style.color = '';
-                option.textContent = option.textContent.replace(' 🔒', '');
-            }
-        });
-
-        currentRoomLockedTimes = [];
-        document.getElementById('lockedTimeInfo').style.display = 'none';
+    
+    // Kilitli saat kontrolü
+    const selectedTime = formData.get('randevu_saat');
+    if (currentRoomLockedTimes.includes(selectedTime)) {
+        alert('Seçilen saat bu oda için kilitli! Lütfen başka bir saat seçin.');
+        return;
     }
-
-    // Danışan detayları yükleme
-    function loadDanisanDetails(satisId) {
-        fetch(`ajax/get_danisan_satis.php?satis_id=${satisId}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    const satis = data.satis;
-                    document.getElementById('totalSessions').textContent = satis.toplam_seans;
-                    document.getElementById('remainingSessions').textContent = satis.kalan_seans;
-                    document.getElementById('nextSessionNumber').textContent = satis.kullanilan_seans + 1;
-                    document.getElementById('paymentStatus').textContent = `₺${satis.odenen_tutar} / ₺${satis.toplam_tutar}`;
-                    
-                    // Ödeme durumu rengini ayarla
-                    const paymentElement = document.getElementById('paymentStatus');
-                    const paymentPercent = (satis.odenen_tutar / satis.toplam_tutar) * 100;
-                    
-                    if (paymentPercent >= 100) {
-                        paymentElement.className = 'fw-bold text-success';
-                    } else if (paymentPercent >= 50) {
-                        paymentElement.className = 'fw-bold text-warning';
-                    } else {
-                        paymentElement.className = 'fw-bold text-danger';
-                    }
-                    
-                    document.getElementById('appointmentDetails').style.display = 'block';
-                } else {
-                    document.getElementById('appointmentDetails').style.display = 'none';
-                    if (data.message) {
-                        alert('Uyarı: ' + data.message);
-                    }
-                }
-            })
-            .catch(error => {
-                console.error('Danışan detayları yüklenirken hata:', error);
-                document.getElementById('appointmentDetails').style.display = 'none';
-            });
-    }
-
-    // Drag and drop fonksiyonları
-    function initializeDragAndDrop() {
-        // Tüm randevu elemanlarına drag event'leri ekle
-        document.querySelectorAll('.appointment').forEach(appointment => {
-            appointment.addEventListener('dragstart', handleDragStart);
-            appointment.addEventListener('dragend', handleDragEnd);
-        });
-
-        // Tüm kilitli olmayan hücrelere drop event'leri ekle
-        document.querySelectorAll('.room-cell:not(.locked)').forEach(cell => {
-            cell.addEventListener('dragover', handleDragOver);
-            cell.addEventListener('dragleave', handleDragLeave);
-            cell.addEventListener('drop', handleDrop);
-        });
-    }
-
-    function handleDragStart(e) {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/html', e.target.outerHTML);
-        e.target.classList.add('dragging');
-    }
-
-    function handleDragEnd(e) {
-        e.target.classList.remove('dragging');
-    }
-
-    function handleDragOver(e) {
-        if (e.preventDefault) {
-            e.preventDefault();
+    
+    // Randevu tarih/saat formatını düzenle
+    const tarih = formData.get('randevu_tarih');
+    const saat = formData.get('randevu_saat');
+    const randevuTarihi = tarih + ' ' + saat + ':00';
+    
+    // Danışan ID'sini al
+    const danisanId = document.getElementById('danisan_id').value;
+    const roomId = formData.get('room_id');
+    const appointmentId = formData.get('id');
+    
+    // Çakışma kontrolü (danışan dahil)
+    const conflictCheck = await checkConflictsWithDanisan(roomId, randevuTarihi, appointmentId, danisanId);
+    
+    if (conflictCheck.hasConflict) {
+        if (conflictCheck.danisanConflict) {
+            alert(conflictCheck.message || 'Bu danışanın aynı saatte başka bir randevusu var!');
+        } else if (conflictCheck.roomConflict) {
+            alert('Bu oda ve saatte başka bir randevu bulunmaktadır!');
         }
-        e.dataTransfer.dropEffect = 'move';
-        e.target.classList.add('drag-over');
-        return false;
+        return;
     }
-
-    function handleDragLeave(e) {
-        e.target.classList.remove('drag-over');
-    }
-
-    function handleDrop(e) {
-        if (e.stopPropagation) {
-            e.stopPropagation();
-        }
-        e.target.classList.remove('drag-over');
+    
+    formData.delete('randevu_tarih');
+    formData.delete('randevu_saat');
+    formData.append('randevu_tarihi', randevuTarihi);
+    
+    showLoading();
+    
+    fetch('ajax/save_appointment.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideLoading();
         
-        // Drag drop işlemi burada yapılacak
-        console.log('Drop işlemi:', e.target);
-        return false;
-    }
+        if (data.success) {
+            showSuccessMessage('Randevu başarıyla kaydedildi!');
+            appointmentModal.hide();
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } else {
+            alert('Hata: ' + (data.message || 'Randevu kaydedilemedi'));
+        }
+    })
+    .catch(error => {
+        hideLoading();
+        console.error('Error:', error);
+        alert('Bir hata oluştu!');
+    });
+}
 
-    // Sayfa yüklendikten sonra drag and drop'u yeniden başlat
-    window.addEventListener('load', function() {
-        setTimeout(function() {
-            initializeDragAndDrop();
-        }, 500);
+// RANDEVU SİLME
+function deleteCurrentAppointment() {
+    if (!currentAppointmentId) {
+        alert('Silinecek randevu bulunamadı!');
+        return;
+    }
+    
+    if (!confirm('Bu randevuyu silmek istediğinizden emin misiniz?')) {
+        return;
+    }
+    
+    showLoading();
+    
+    fetch('ajax/delete_appointment.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ appointment_id: currentAppointmentId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideLoading();
+        
+        if (data.success) {
+            showSuccessMessage('Randevu başarıyla silindi!');
+            appointmentModal.hide();
+            setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } else {
+            alert('Hata: ' + (data.message || 'Randevu silinemedi'));
+        }
+    })
+    .catch(error => {
+        hideLoading();
+        console.error('Error:', error);
+        alert('Bir hata oluştu!');
+    });
+}
+
+// TARİH NAVİGASYON
+function changeDate(days) {
+    const currentDate = new Date(document.getElementById('schedule-date').value);
+    currentDate.setDate(currentDate.getDate() + days);
+    const newDate = currentDate.toISOString().split('T')[0];
+    window.location.href = 'room_schedule.php?date=' + newDate;
+}
+
+// KİLİTLİ SAATLER
+function loadRoomLockedTimes(roomId, date) {
+    fetch(`ajax/get_room_locked_times.php?room_id=${roomId}&date=${date}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                currentRoomLockedTimes = data.locked_times.map(item => item.time);
+                updateTimeOptions();
+                
+                const infoElement = document.getElementById('lockedTimeInfo');
+                if (currentRoomLockedTimes.length > 0) {
+                    infoElement.style.display = 'block';
+                } else {
+                    infoElement.style.display = 'none';
+                }
+            } else {
+                console.error('Kilitli saatler yüklenemedi:', data.message);
+                resetTimeOptions();
+            }
+        })
+        .catch(error => {
+            console.error('Kilitli saatler yüklenirken hata:', error);
+            resetTimeOptions();
+        });
+}
+
+function updateTimeOptions() {
+    const timeSelect = document.getElementById('randevu_saat');
+    if (!timeSelect) return;
+
+    Array.from(timeSelect.options).forEach(option => {
+        if (option.value) {
+            option.classList.remove('locked-time-option');
+            option.disabled = false;
+            option.style.backgroundColor = '';
+            option.style.color = '';
+            option.textContent = option.textContent.replace(' 🔒', '');
+        }
     });
 
-    // Global fonksiyonları window objesine ata (onclick event'ları için)
-    </script>
+    currentRoomLockedTimes.forEach(lockedTime => {
+        const option = timeSelect.querySelector(`option[value="${lockedTime}"]`);
+        if (option) {
+            option.classList.add('locked-time-option');
+            option.disabled = true;
+            option.style.backgroundColor = '#e9ecef';
+            option.style.color = '#6c757d';
+            option.textContent = option.textContent.replace(' 🔒', '') + ' 🔒';
+        }
+    });
 
+    if (timeSelect.value && currentRoomLockedTimes.includes(timeSelect.value)) {
+        timeSelect.value = '';
+        alert('Seçilen saat bu oda için kilitli! Lütfen başka bir saat seçin.');
+    }
+}
+
+function resetTimeOptions() {
+    const timeSelect = document.getElementById('randevu_saat');
+    if (!timeSelect) return;
+
+    Array.from(timeSelect.options).forEach(option => {
+        if (option.value) {
+            option.classList.remove('locked-time-option');
+            option.disabled = false;
+            option.style.backgroundColor = '';
+            option.style.color = '';
+            option.textContent = option.textContent.replace(' 🔒', '');
+        }
+    });
+
+    currentRoomLockedTimes = [];
+    const infoElement = document.getElementById('lockedTimeInfo');
+    if (infoElement) {
+        infoElement.style.display = 'none';
+    }
+}
+
+// DANIŞAN DETAYLARI
+function loadDanisanDetails(satisId) {
+    fetch(`ajax/get_danisan_satis.php?satis_id=${satisId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const satis = data.satis;
+                document.getElementById('totalSessions').textContent = satis.toplam_seans;
+                document.getElementById('remainingSessions').textContent = satis.kalan_seans;
+                document.getElementById('nextSessionNumber').textContent = satis.kullanilan_seans + 1;
+                document.getElementById('paymentStatus').textContent = `₺${satis.odenen_tutar} / ₺${satis.toplam_tutar}`;
+                
+                const paymentElement = document.getElementById('paymentStatus');
+                const paymentPercent = (satis.odenen_tutar / satis.toplam_tutar) * 100;
+                
+                if (paymentPercent >= 100) {
+                    paymentElement.className = 'fw-bold text-success';
+                } else if (paymentPercent >= 50) {
+                    paymentElement.className = 'fw-bold text-warning';
+                } else {
+                    paymentElement.className = 'fw-bold text-danger';
+                }
+                
+                document.getElementById('appointmentDetails').style.display = 'block';
+            } else {
+                document.getElementById('appointmentDetails').style.display = 'none';
+                if (data.message) {
+                    console.log('Uyarı: ' + data.message);
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Danışan detayları yüklenirken hata:', error);
+            document.getElementById('appointmentDetails').style.display = 'none';
+        });
+}
+
+// YARDIMCI FONKSİYONLAR
+function showLoading() {
+    const loadingDiv = document.createElement('div');
+    loadingDiv.id = 'loadingIndicator';
+    loadingDiv.innerHTML = '<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Yükleniyor...</span></div>';
+    loadingDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;';
+    document.body.appendChild(loadingDiv);
+}
+
+function hideLoading() {
+    const loadingDiv = document.getElementById('loadingIndicator');
+    if (loadingDiv) {
+        loadingDiv.remove();
+    }
+}
+
+function showSuccessMessage(message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed';
+    alertDiv.style.cssText = 'top:20px;right:20px;z-index:9999;min-width:300px;';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 3000);
+}
+
+// Sayfa yüklendikten sonra drag and drop'u yeniden başlat
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        initializeDragAndDrop();
+    }, 500);
+});
+
+// Global fonksiyonları window objesine ata
+window.handleAppointmentAdd = handleAppointmentAdd;
+window.handleAppointmentEdit = handleAppointmentEdit;
+window.saveAppointment = saveAppointment;
+window.changeDate = changeDate;
+window.deleteCurrentAppointment = deleteCurrentAppointment;
+</script>
 </body>
 </html>

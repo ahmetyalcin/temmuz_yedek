@@ -17,7 +17,134 @@ function checkLogin($kullanici_adi, $sifre) {
     }
 }
 
+// functions.php'ye eklenecek fonksiyon
 
+function getAllDanisanlar() {
+    global $pdo;
+    try {
+        $sql = "SELECT id, ad, soyad, telefon, email 
+                FROM danisanlar 
+                WHERE aktif = 1 
+                ORDER BY ad, soyad";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        error_log("Tüm danışanları getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
+
+// Filtrelenmiş oda programını getir
+function getFilteredRoomSchedule($date, $filters = []) {
+    global $pdo;
+    try {
+        $sql = "SELECT 
+                r.id as randevu_id,
+                r.randevu_tarihi,
+                r.notlar,
+                r.durum,
+                r.is_gift,
+                r.evaluation_type,
+                r.evaluation_number,
+                r.evaluation_notes,
+                r.room_id,
+                r.danisan_id,
+                r.personel_id,
+                rm.name as room_name,
+                d.ad as danisan_adi,
+                d.soyad as danisan_soyadi,
+                CONCAT(d.ad, ' ', d.soyad) as danisan_full,
+                p.ad as terapist_adi,
+                p.soyad as terapist_soyadi,
+                CONCAT(p.ad, ' ', p.soyad) as terapist_full,
+                st.ad as seans_turu,
+                st.sure,
+                st.evaluation_interval,
+                (SELECT COUNT(*) FROM randevular 
+                 WHERE satis_id = r.satis_id 
+                 AND randevu_tarihi <= r.randevu_tarihi 
+                 AND aktif = 1) as seans_sirasi
+            FROM randevular r
+            JOIN rooms rm ON rm.id = r.room_id
+            JOIN danisanlar d ON d.id = r.danisan_id
+            JOIN personel p ON p.id = r.personel_id
+            LEFT JOIN satislar s ON s.id = r.satis_id
+            LEFT JOIN seans_turleri st ON st.id = s.hizmet_paketi_id
+            WHERE DATE(r.randevu_tarihi) = ?
+            AND r.aktif = 1";
+        
+        $params = [$date];
+        
+        // Filtreleri uygula
+        if (!empty($filters['terapist'])) {
+            $sql .= " AND r.personel_id = ?";
+            $params[] = $filters['terapist'];
+        }
+        
+        if (!empty($filters['room'])) {
+            $sql .= " AND r.room_id = ?";
+            $params[] = $filters['room'];
+        }
+        
+        if (!empty($filters['danisan'])) {
+            $sql .= " AND r.danisan_id = ?";
+            $params[] = $filters['danisan'];
+        }
+        
+        $sql .= " ORDER BY r.randevu_tarihi, rm.id";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Sonuçları organize et
+        $schedule = [];
+        $rooms = getRooms();
+        
+        // Her oda için boş yapı oluştur
+        foreach ($rooms as $room) {
+            // Oda filtresi varsa sadece o odayı göster
+            if (!empty($filters['room']) && $room['id'] != $filters['room']) {
+                continue;
+            }
+            
+            $schedule[$room['id']] = [
+                'room_info' => $room,
+                'appointments' => []
+            ];
+        }
+        
+        // Randevuları yerleştir
+        foreach ($results as $row) {
+            if (isset($schedule[$row['room_id']])) {
+                $time_slot = date('H:i', strtotime($row['randevu_tarihi']));
+                
+                $schedule[$row['room_id']]['appointments'][$time_slot] = [
+                    'id' => $row['randevu_id'],
+                    'danisan' => $row['danisan_full'],
+                    'danisan_id' => $row['danisan_id'],
+                    'terapist' => $row['terapist_full'],
+                    'terapist_id' => $row['personel_id'],
+                    'seans_turu' => $row['seans_turu'],
+                    'durum' => $row['durum'],
+                    'evaluation_type' => $row['evaluation_type'],
+                    'evaluation_number' => $row['evaluation_number'],
+                    'evaluation_notes' => $row['evaluation_notes'],
+                    'sure' => $row['sure'],
+                    'seans_sirasi' => $row['seans_sirasi'],
+                    'is_gift' => $row['is_gift']
+                ];
+            }
+        }
+        
+        return $schedule;
+    } catch(PDOException $e) {
+        error_log("Filtrelenmiş oda programı getirme hatası: " . $e->getMessage());
+        return [];
+    }
+}
 
 
 // -- kategori.php fonksiyonları --
