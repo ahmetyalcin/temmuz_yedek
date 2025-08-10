@@ -9,8 +9,6 @@ $terapistler = getTerapistler(true);
 $danisanlar = getDanisanlarWithRemainingAppointments();
 $seans_turleri = getSeansTurleri();
 
-
-
 $filter_terapist = $_GET['terapist'] ?? '';
 $filter_danisan = $_GET['danisan'] ?? '';
 
@@ -144,7 +142,6 @@ function getFilteredRoomSchedule($date, $terapist_id = null, $danisan_id = null)
 
 $schedule = getFilteredRoomSchedule($current_date, $filter_terapist, $filter_danisan);
 
-
 ?>
 <!DOCTYPE html>
 <html lang="tr">
@@ -152,8 +149,6 @@ $schedule = getFilteredRoomSchedule($current_date, $filter_terapist, $filter_dan
     <?php include "partials/title-meta.php"; ?>
     <?php include 'partials/head-css.php'; ?>
     <style>
-
-
     .filter-section {
         background: #f8f9fa;
         border-radius: 8px;
@@ -297,7 +292,6 @@ $schedule = getFilteredRoomSchedule($current_date, $filter_terapist, $filter_dan
 
 <!-- Filtreleme Bölümü -->
                                 <div class="filter-section">
-                                    ahmet
                                     <form method="GET" id="filterForm">
                                         <input type="hidden" name="page" value="room_schedule">
                                         <input type="hidden" name="date" value="<?= htmlspecialchars($current_date) ?>">
@@ -370,7 +364,6 @@ $schedule = getFilteredRoomSchedule($current_date, $filter_terapist, $filter_dan
                                         </div>
                                     <?php endif; ?>
                                 </div>
-
 
                                 <div class="container-fluid">
                                     <div class="navigation">
@@ -520,143 +513,309 @@ $schedule = getFilteredRoomSchedule($current_date, $filter_terapist, $filter_dan
         </div>
     </div>
 
-    <!-- Randevu Modal -->
+    <!-- Updated Modal with All Tabs -->
     <div class="modal fade" id="appointmentModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Randevu İşlemleri</h5>
+                    <h5 class="modal-title">Randevu Detayları</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <form id="appointmentForm" onsubmit="return false;">
-                        <input type="hidden" name="ajax_action" value="">
-                        <input type="hidden" name="id" value="">
-                        <input type="hidden" name="danisan_id" id="danisan_id" value="">
-                        <input type="hidden" name="seans_turu_id" id="seans_turu_id" value="">
-                        <input type="hidden" name="satis_id" id="satis_id" value="">
+                    <!-- Tab Navigation -->
+                    <ul class="nav nav-tabs mb-3" id="appointmentTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="details-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#details" type="button" role="tab">
+                                Randevu<br>Bilgileri
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="appointments-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#appointments" type="button" role="tab">
+                                Randevu<br>Listesi
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="randevu-not-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#randevu-notlari" type="button" role="tab">
+                                Randevu<br>Notları
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="notes-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#notes" type="button" role="tab">
+                                Genel<br>Notlar
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="payments-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#payments" type="button" role="tab">
+                                Ödeme<br>Geçmişi
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation" id="fonksiyonel-not-tab-li" style="display:none;">
+                            <button class="nav-link" id="fonksiyonel-notlar-tab" data-bs-toggle="tab" 
+                                    data-bs-target="#fonksiyonel-notlar" type="button" role="tab">
+                                Fonksiyonel<br>Notlar
+                            </button>
+                        </li>
+                    </ul>
 
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="danisan_satis_id" class="form-label">Danışan ve Paket</label>
-                                    <select name="danisan_satis_id" id="danisan_satis_id" class="form-select" required>
-                                        <option value="">Danışan ve paket seçin...</option>
-                                        <?php foreach ($danisanlar as $danisan): ?>
-                                            <option value="<?php echo $danisan['aktif_satis_id']; ?>" 
-                                                    data-danisan-id="<?php echo $danisan['id']; ?>"
-                                                    data-seans-turu-id="<?php echo $danisan['seans_turu_id']; ?>">
-                                                <?php echo htmlspecialchars($danisan['ad_soyad']); ?>
-                                                (Kalan: <?php echo $danisan['kalan_seans']; ?> seans)
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="personel_id" class="form-label">Terapist</label>
-                                    <select name="personel_id" id="personel_id" class="form-select" required>
-                                        <option value="">Terapist seçin...</option>
-                                        <?php foreach ($terapistler as $terapist): ?>
-                                            <option value="<?php echo $terapist['id']; ?>">
-                                                <?php echo htmlspecialchars($terapist['ad'])." " .htmlspecialchars($terapist['soyad']) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
+                    <!-- Tab Contents -->
+                    <div class="tab-content">
+                        <!-- Randevu Bilgileri Tab -->
+                        <div class="tab-pane fade show active" id="details" role="tabpanel">
+                            <form id="appointmentForm" onsubmit="return false;">
+                                <input type="hidden" name="ajax_action" value="">
+                                <input type="hidden" name="id" value="">
+                                <input type="hidden" name="danisan_id" id="danisan_id" value="">
+                                <input type="hidden" name="seans_turu_id" id="seans_turu_id" value="">
+                                <input type="hidden" name="satis_id" id="satis_id" value="">
 
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="room_id" class="form-label">Oda</label>
-                                    <select name="room_id" id="room_id" class="form-select" required>
-                                        <option value="">Oda seçin...</option>
-                                        <?php foreach ($rooms as $room): ?>
-                                            <option value="<?php echo $room['id']; ?>">
-                                                <?php echo htmlspecialchars($room['name']); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label">Seçilen Paket</label>
-                                    <div id="selectedPackage" class="form-control-plaintext">
-                                        <em class="text-muted">Danışan seçince görünecek</em>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="randevu_tarih" class="form-label">Tarih</label>
-                                    <input type="date" name="randevu_tarih" id="randevu_tarih" class="form-control" required>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="randevu_saat" class="form-label">Saat</label>
-                                    <select name="randevu_saat" id="randevu_saat" class="form-select" required>
-                                        <option value="">Saat seçin...</option>
-                                        <?php for ($i = 8; $i <= 21; $i++): ?>
-                                            <option value="<?php echo sprintf('%02d:00', $i); ?>">
-                                                <?php echo sprintf('%02d:00', $i); ?>
-                                            </option>
-                                        <?php endfor; ?>
-                                    </select>
-                                    <small class="text-muted mt-1" id="lockedTimeInfo" style="display: none;">
-                                        <i class="fas fa-lock text-warning"></i> Kilitli saatler seçilemez
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="notlar" class="form-label">Notlar</label>
-                            <textarea name="notlar" id="notlar" class="form-control" rows="3"></textarea>
-                        </div>
-
-                        <!-- Randevu bilgileri -->
-                        <div id="appointmentDetails" class="card mt-3" style="display: none;">
-                            <div class="card-header">
-                                <h6 class="mb-0">Paket Bilgileri</h6>
-                            </div>
-                            <div class="card-body">
                                 <div class="row">
                                     <div class="col-md-6">
-                                        <small class="text-muted">Toplam Seans:</small>
-                                        <span id="totalSessions" class="fw-bold">0</span>
+                                        <div class="mb-3">
+                                            <label for="danisan_satis_id" class="form-label">Danışan ve Paket</label>
+                                            <select name="danisan_satis_id" id="danisan_satis_id" class="form-select" required>
+                                                <option value="">Danışan ve paket seçin...</option>
+                                                <?php foreach ($danisanlar as $danisan): ?>
+                                                    <option value="<?php echo $danisan['aktif_satis_id']; ?>" 
+                                                            data-danisan-id="<?php echo $danisan['id']; ?>"
+                                                            data-seans-turu-id="<?php echo $danisan['seans_turu_id']; ?>">
+                                                        <?php echo htmlspecialchars($danisan['ad_soyad']); ?>
+                                                        (Kalan: <?php echo $danisan['kalan_seans']; ?> seans)
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
                                     </div>
                                     <div class="col-md-6">
-                                        <small class="text-muted">Kalan Seans:</small>
-                                        <span id="remainingSessions" class="fw-bold">0</span>
+                                        <div class="mb-3">
+                                            <label for="personel_id" class="form-label">Terapist</label>
+                                            <select name="personel_id" id="personel_id" class="form-select" required>
+                                                <option value="">Terapist seçin...</option>
+                                                <?php foreach ($terapistler as $terapist): ?>
+                                                    <option value="<?php echo $terapist['id']; ?>">
+                                                        <?php echo htmlspecialchars($terapist['ad'])." " .htmlspecialchars($terapist['soyad']) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="row mt-2">
+
+                                <div class="row">
                                     <div class="col-md-6">
-                                        <small class="text-muted">Sıradaki Seans:</small>
-                                        <span id="nextSessionNumber" class="fw-bold">0</span>
+                                        <div class="mb-3">
+                                            <label for="room_id" class="form-label">Oda</label>
+                                            <select name="room_id" id="room_id" class="form-select" required>
+                                                <option value="">Oda seçin...</option>
+                                                <?php foreach ($rooms as $room): ?>
+                                                    <option value="<?php echo $room['id']; ?>">
+                                                        <?php echo htmlspecialchars($room['name']); ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
                                     </div>
                                     <div class="col-md-6">
-                                        <small class="text-muted">Ödeme Durumu:</small>
-                                        <span id="paymentStatus" class="fw-bold">₺0 / ₺0</span>
+                                        <div class="mb-3">
+                                            <label class="form-label">Seçilen Paket</label>
+                                            <div id="selectedPackage" class="form-control-plaintext">
+                                                <em class="text-muted">Danışan seçince görünecek</em>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="randevu_tarih" class="form-label">Tarih</label>
+                                            <input type="date" name="randevu_tarih" id="randevu_tarih" class="form-control" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="randevu_saat" class="form-label">Saat</label>
+                                            <select name="randevu_saat" id="randevu_saat" class="form-select" required>
+                                                <option value="">Saat seçin...</option>
+                                                <?php for ($i = 8; $i <= 21; $i++): ?>
+                                                    <option value="<?php echo sprintf('%02d:00', $i); ?>">
+                                                        <?php echo sprintf('%02d:00', $i); ?>
+                                                    </option>
+                                                <?php endfor; ?>
+                                            </select>
+                                            <small class="text-muted mt-1" id="lockedTimeInfo" style="display: none;">
+                                                <i class="fas fa-lock text-warning"></i> Kilitli saatler seçilemez
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="notlar" class="form-label">Notlar</label>
+                                    <textarea name="notlar" id="notlar" class="form-control" rows="3"></textarea>
+                                </div>
+
+                                <!-- Evaluation Notes Section -->
+                                <div class="evaluation-notes-section" style="display: none;">
+                                    <div class="mb-3">
+                                        <label class="evaluation-notes-label form-label">Değerlendirme Notları</label>
+                                        <textarea name="evaluation_notes" class="form-control" rows="4" 
+                                                  placeholder="Değerlendirme sonuçları ve öneriler..."></textarea>
+                                    </div>
+                                </div>
+
+                                <!-- Randevu bilgileri -->
+                                <div id="appointmentDetails" class="card mt-3" style="display: none;">
+                                    <div class="card-header">
+                                        <h6 class="mb-0">Paket Bilgileri</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <small class="text-muted">Toplam Seans:</small>
+                                                <span id="totalSessions" class="fw-bold">0</span>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <small class="text-muted">Kalan Seans:</small>
+                                                <span id="remainingSessions" class="fw-bold">0</span>
+                                            </div>
+                                        </div>
+                                        <div class="row mt-2">
+                                            <div class="col-md-6">
+                                                <small class="text-muted">Sıradaki Seans:</small>
+                                                <span id="nextSessionNumber" class="fw-bold">0</span>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <small class="text-muted">Ödeme Durumu:</small>
+                                                <span id="paymentStatus" class="fw-bold">₺0 / ₺0</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Randevu Listesi Tab -->
+                        <div class="tab-pane fade" id="appointments" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Tarih</th>
+                                            <th>Saat</th>
+                                            <th>Terapist</th>
+                                            <th>Seans Türü</th>
+                                            <th>Oda</th>
+                                            <th>Durum</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="appointmentsList"></tbody>
+                                </table>
                             </div>
                         </div>
-                    </form>
+
+                        <!-- Randevu Notları Tab -->
+                        <div class="tab-pane fade" id="randevu-notlari" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Randevu Tarihi</th>
+                                            <th>Terapist</th>
+                                            <th>Not</th>
+                                            <th>Eklenme Tarihi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="randevuNotesList"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Genel Notlar Tab -->
+                        <div class="tab-pane fade" id="notes" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Tarih</th>
+                                            <th>Ekleyen</th>
+                                            <th>Not</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="notesList"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Ödeme Geçmişi Tab -->
+                        <div class="tab-pane fade" id="payments" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Vade Tarihi</th>
+                                            <th>Ödenen Tutar</th>
+                                            <th>Ödeme Tipi</th>
+                                            <th>Satış Personeli</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="paymentsList"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Fonksiyonel Notlar Tab -->
+                        <div class="tab-pane fade" id="fonksiyonel-notlar" role="tabpanel">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Seans No</th>
+                                            <th>Başlık</th>
+                                            <th>Not</th>
+                                            <th>Ekleyen</th>
+                                            <th>Tarih</th>
+                                            <th>İşlem</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="fonksiyonelNotesList"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">İptal</button>
                     <button type="button" class="btn btn-danger" id="deleteAppointmentBtn" style="display: none;" onclick="deleteCurrentAppointment()">Sil</button>
                     <button type="button" class="btn btn-primary" onclick="saveAppointment()">Kaydet</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fonksiyonel Not Ekleme Modal -->
+    <div class="modal fade" id="fonksiyonelNotEkleModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="fonksiyonelNotEkleForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Fonksiyonel Not Ekle</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="seans_no" id="fonkSeansNo">
+                        <input type="hidden" name="danisan_id" id="fonkDanisanId">
+                        <input type="hidden" name="satis_id" id="fonkSatisId">
+                        <textarea name="icerik" class="form-control" rows="3" placeholder="Notunuz"></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="submit" class="btn btn-primary">Kaydet</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -670,6 +829,7 @@ var appointmentModal;
 var currentRoomLockedTimes = [];
 var currentAppointmentId = null;
 var draggedAppointment = null;
+var currentDanisanId = null;
 
 // DOM yüklendiğinde çalışacak fonksiyon
 document.addEventListener('DOMContentLoaded', function() {
@@ -677,7 +837,224 @@ document.addEventListener('DOMContentLoaded', function() {
     appointmentModal = new bootstrap.Modal(document.getElementById('appointmentModal'));
     initializeEventListeners();
     initializeDragAndDrop();
+    initializeTabEventListeners();
 });
+
+// Tab Event Listeners
+function initializeTabEventListeners() {
+    // Tab event listeners
+    document.getElementById('appointments-tab').addEventListener('shown.bs.tab', function () {
+        if (currentDanisanId) loadAppointmentsList(currentDanisanId);
+    });
+
+    document.getElementById('randevu-not-tab').addEventListener('shown.bs.tab', function () {
+        if (currentDanisanId) loadRandevuNotes(currentDanisanId);
+    });
+
+    document.getElementById('notes-tab').addEventListener('shown.bs.tab', function () {
+        if (currentDanisanId) loadDanisanNotes(currentDanisanId);
+    });
+
+    document.getElementById('payments-tab').addEventListener('shown.bs.tab', function () {
+        if (currentDanisanId) loadPaymentHistory(currentDanisanId);
+    });
+
+    document.getElementById('fonksiyonel-notlar-tab').addEventListener('shown.bs.tab', function () {
+        if (currentDanisanId) loadFonksiyonelNotes(currentDanisanId);
+    });
+}
+
+// Tab Content Load Functions
+function loadAppointmentsList(danisan_id) {
+    fetch(`ajax/get_danisan_randevular.php?danisan_id=${danisan_id}`)
+    .then(response => response.json())
+    .then(data => {
+        const appointmentsList = document.getElementById('appointmentsList');
+        appointmentsList.innerHTML = '';
+        
+        if (data.success && data.data.length > 0) {
+            data.data.forEach(appointment => {
+                const row = document.createElement('tr');
+                const date = new Date(appointment.randevu_tarihi);
+                row.innerHTML = `
+                    <td>${date.toLocaleDateString('tr-TR')}</td>
+                    <td>${date.toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'})}</td>
+                    <td>${appointment.terapist_adi || '-'}</td>
+                    <td>${appointment.seans_turu || '-'}</td>
+                    <td>${appointment.room_name || '-'}</td>
+                    <td><span class="badge bg-${appointment.durum === 'geldi' ? 'success' : appointment.durum === 'gelmedi' ? 'danger' : 'warning'}">${appointment.durum}</span></td>
+                `;
+                appointmentsList.appendChild(row);
+            });
+        } else {
+            appointmentsList.innerHTML = '<tr><td colspan="6" class="text-center">Randevu bulunamadı</td></tr>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('appointmentsList').innerHTML = '<tr><td colspan="6" class="text-center text-danger">Hata oluştu</td></tr>';
+    });
+}
+
+function loadRandevuNotes(danisan_id) {
+    fetch(`ajax/get-danisan-randevu-notlari.php?danisan_id=${danisan_id}`)
+    .then(response => response.json())
+    .then(data => {
+        const notesList = document.getElementById('randevuNotesList');
+        notesList.innerHTML = '';
+        
+        if (data.success && data.data.length > 0) {
+            data.data.forEach(note => {
+                const ekleyen = ((note.personel_ad || '') + ' ' + (note.personel_soyad || '')).trim() || 'Sistem';
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${new Date(note.randevu_tarihi).toLocaleDateString('tr-TR')} ${new Date(note.randevu_tarihi).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'})}</td>
+                    <td>${ekleyen}</td>
+                    <td>${note.notlar || '-'}</td>
+                    <td>${new Date(note.guncelleme_tarihi).toLocaleDateString('tr-TR')} ${new Date(note.guncelleme_tarihi).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'})}</td>
+                `;
+                notesList.appendChild(row);
+            });
+        } else {
+            notesList.innerHTML = '<tr><td colspan="4" class="text-center">Randevu notu bulunamadı</td></tr>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('randevuNotesList').innerHTML = '<tr><td colspan="4" class="text-center text-danger">Hata oluştu</td></tr>';
+    });
+}
+
+function loadDanisanNotes(danisan_id) {
+    fetch(`ajax/get-danisan-notlar.php?danisan_id=${danisan_id}`)
+    .then(response => response.json())
+    .then(data => {
+        const notesList = document.getElementById('notesList');
+        notesList.innerHTML = '';
+        
+        if (data.success && data.data.length > 0) {
+            data.data.forEach(note => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${new Date(note.not_tarihi).toLocaleDateString('tr-TR')} ${new Date(note.not_tarihi).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'})}</td>
+                    <td>${(note.personel_ad || '') + ' ' + (note.personel_soyad || '')}</td>
+                    <td>${note.icerik}</td>
+                `;
+                notesList.appendChild(row);
+            });
+        } else {
+            notesList.innerHTML = '<tr><td colspan="3" class="text-center">Not bulunamadı</td></tr>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('notesList').innerHTML = '<tr><td colspan="3" class="text-center text-danger">Hata oluştu</td></tr>';
+    });
+}
+
+function loadPaymentHistory(danisan_id) {
+    fetch(`ajax/get_danisan_odemeler.php?danisan_id=${danisan_id}`)
+    .then(response => response.json())
+    .then(data => {
+        const paymentsList = document.getElementById('paymentsList');
+        paymentsList.innerHTML = '';
+        
+        if (data.success && data.data.length > 0) {
+            data.data.forEach(payment => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${payment.vade_tarihi ? new Date(payment.vade_tarihi).toLocaleDateString('tr-TR') : '-'}</td>
+                    <td>${parseFloat(payment.tutar).toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺</td>
+                    <td>${payment.odeme_tipi || '-'}</td>
+                    <td>${payment.personel_adi || '-'}</td>
+                `;
+                paymentsList.appendChild(row);
+            });
+        } else {
+            paymentsList.innerHTML = '<tr><td colspan="4" class="text-center">Ödeme geçmişi bulunamadı</td></tr>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('paymentsList').innerHTML = '<tr><td colspan="4" class="text-center text-danger">Hata oluştu</td></tr>';
+    });
+}
+
+function loadFonksiyonelNotes(danisan_id) {
+    fetch(`ajax/get_fonksiyonel_seans_notlari.php?danisan_id=${danisan_id}`)
+    .then(response => response.json())
+    .then(data => {
+        const notesList = document.getElementById('fonksiyonelNotesList');
+        
+        if (data.success) {
+            notesList.innerHTML = data.html;
+        } else {
+            notesList.innerHTML = '<tr><td colspan="6" class="text-center">Fonksiyonel not bulunamadı</td></tr>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('fonksiyonelNotesList').innerHTML = '<tr><td colspan="6" class="text-center text-danger">Hata oluştu</td></tr>';
+    });
+}
+
+function saveFonksiyonelNot(btn, olcumNo) {
+    const textarea = $(btn).closest('tr').find('textarea');
+    const icerik = textarea.val();
+
+    $.post('ajax/save_fonksiyonel_seans_notu.php', {
+        danisan_id: currentDanisanId,
+        olcum_no: olcumNo,
+        icerik: icerik
+    }, function(res) {
+        if (res.success) {
+            $(btn).text('Kaydedildi!').removeClass('btn-primary').addClass('btn-success');
+            setTimeout(function() {
+                $(btn).text('Kaydet').removeClass('btn-success').addClass('btn-primary');
+            }, 1200);
+            loadFonksiyonelNotes(currentDanisanId);
+        } else {
+            alert('Hata: ' + (res.message || 'Kaydedilemedi'));
+        }
+    }, 'json');
+}
+
+// Load Appointment Details with Tab Support
+async function loadAppointmentDetails(satis_id, appointmentId = null) {
+    try {
+        const response = await fetch(`ajax/get_randevu_detay.php?id=${satis_id}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            currentDanisanId = data.satis.danisan_id;
+            
+            const totalSessions = parseInt(data.satis.seans_adet || 0) + parseInt(data.satis.hediye_seans || 0);
+            document.getElementById('totalSessions').textContent = totalSessions;
+
+            const usedSessions = data.randevular ? data.randevular.filter(r => r.durum === 'geldi').length : 0;
+            document.getElementById('remainingSessions').textContent = totalSessions - usedSessions;
+
+            // Show/hide Fonksiyonel tab based on session type
+            const fonksiyonelSeansTurleri = [55, 56, 57, 58];
+            const currentSeansTuruId = data.satis.hizmet_paketi_id;
+            const fonksiyonelTab = document.getElementById('fonksiyonel-not-tab-li');
+            
+            if (fonksiyonelSeansTurleri.includes(parseInt(currentSeansTuruId))) {
+                fonksiyonelTab.style.display = '';
+            } else {
+                fonksiyonelTab.style.display = 'none';
+            }
+
+            if (appointmentId) {
+                document.getElementById('deleteAppointmentBtn').style.display = 'inline-block';
+            } else {
+                document.getElementById('deleteAppointmentBtn').style.display = 'none';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading appointment details:', error);
+    }
+}
 
 // Event listener'ları başlat
 function initializeEventListeners() {
@@ -703,10 +1080,12 @@ function initializeEventListeners() {
                 // Danışan detaylarını yükle
                 if (satisId) {
                     loadDanisanDetails(satisId);
+                    currentDanisanId = danisanId; // Set current danisan ID
                 }
             } else {
                 document.getElementById('selectedPackage').innerHTML = '<em class="text-muted">Danışan seçince görünecek</em>';
                 document.getElementById('appointmentDetails').style.display = 'none';
+                currentDanisanId = null;
             }
         });
     }
@@ -993,7 +1372,6 @@ function handleAppointmentAdd(datetime, roomId) {
         const formattedTime = time;
         console.log('Saat set ediliyor:', formattedTime);
 
-
         // Önce select'i temizle ve varsayılan option'ı koru
         const defaultOption = timeSelect.querySelector('option[value=""]');
         
@@ -1031,6 +1409,7 @@ function handleAppointmentAdd(datetime, roomId) {
     document.getElementById('deleteAppointmentBtn').style.display = 'none';
     
     currentAppointmentId = null;
+    currentDanisanId = null;
     
     if (appointmentModal) {
         appointmentModal.show();
@@ -1057,6 +1436,14 @@ function handleAppointmentEdit(appointmentId, event) {
             
             const appointment = data.data;
             const form = document.getElementById('appointmentForm');
+            
+            // Set current danisan ID for tabs
+            currentDanisanId = appointment.danisan_id;
+            
+            // Load appointment details first
+            if (appointment.satis_id) {
+                loadAppointmentDetails(appointment.satis_id, appointmentId);
+            }
             
             // Form alanlarını doldur
             form.querySelector('input[name="ajax_action"]').value = 'randevu_guncelle';
@@ -1104,6 +1491,19 @@ function handleAppointmentEdit(appointmentId, event) {
             form.querySelector('input[name="randevu_tarih"]').value = datePart;
             form.querySelector('select[name="randevu_saat"]').value = timePart.substring(0, 5);
             form.querySelector('textarea[name="notlar"]').value = appointment.notlar || '';
+
+            // Evaluation notes handling
+            const evaluationSection = form.querySelector('.evaluation-notes-section');
+            const evaluationLabel = form.querySelector('.evaluation-notes-label');
+            const evaluationNotes = form.querySelector('textarea[name="evaluation_notes"]');
+
+            if (appointment.evaluation_number) {
+                evaluationSection.style.display = 'block';
+                evaluationLabel.textContent = `${appointment.evaluation_number}. Değerlendirme Notları`;
+                evaluationNotes.value = appointment.evaluation_notes || '';
+            } else {
+                evaluationSection.style.display = 'none';
+            }
 
             // Oda ve tarih seçili olduğu için kilitli saatleri yükle
             if (appointment.room_id && datePart) {
@@ -1169,6 +1569,13 @@ async function saveAppointment() {
     formData.delete('randevu_tarih');
     formData.delete('randevu_saat');
     formData.append('randevu_tarihi', randevuTarihi);
+    
+    // Add evaluation notes if section is visible
+    const evaluationSection = form.querySelector('.evaluation-notes-section');
+    if (evaluationSection.style.display !== 'none') {
+        const evaluationNotes = form.querySelector('textarea[name="evaluation_notes"]').value;
+        formData.set('evaluation_notes', evaluationNotes);
+    }
     
     showLoading();
     
@@ -1238,32 +1645,32 @@ function deleteCurrentAppointment() {
     });
 }
 
- function changeDateWithFilters(newDate) {
-            const url = new URL(window.location);
-            url.searchParams.set('date', newDate);
-            window.location.href = url.toString();
-        }
+function changeDateWithFilters(newDate) {
+    const url = new URL(window.location);
+    url.searchParams.set('date', newDate);
+    window.location.href = url.toString();
+}
 
-        function clearFilters() {
-            const url = new URL(window.location);
-            url.searchParams.delete('terapist');
-            url.searchParams.delete('danisan');
-            window.location.href = url.toString();
-        }
+function clearFilters() {
+    const url = new URL(window.location);
+    url.searchParams.delete('terapist');
+    url.searchParams.delete('danisan');
+    window.location.href = url.toString();
+}
 
-        function removeFilter(filterType) {
-            const url = new URL(window.location);
-            url.searchParams.delete(filterType);
-            window.location.href = url.toString();
-        }
+function removeFilter(filterType) {
+    const url = new URL(window.location);
+    url.searchParams.delete(filterType);
+    window.location.href = url.toString();
+}
 
 document.getElementById('terapist').addEventListener('change', function() {
-            document.getElementById('filterForm').submit();
-        });
+    document.getElementById('filterForm').submit();
+});
 
-        document.getElementById('danisan').addEventListener('change', function() {
-            document.getElementById('filterForm').submit();
-        });
+document.getElementById('danisan').addEventListener('change', function() {
+    document.getElementById('filterForm').submit();
+});
 
 // TARİH NAVİGASYON
 function changeDate(days) {
@@ -1434,6 +1841,7 @@ window.handleAppointmentEdit = handleAppointmentEdit;
 window.saveAppointment = saveAppointment;
 window.changeDate = changeDate;
 window.deleteCurrentAppointment = deleteCurrentAppointment;
+window.saveFonksiyonelNot = saveFonksiyonelNot;
 </script>
 </body>
 </html>
