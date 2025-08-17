@@ -18,16 +18,38 @@ function isTherapist() {
 
         <ul class="side-nav">
 
+               <?php if (isTherapist()): ?>
             <!-- Dashboard (herkes görür) -->
             <li class="side-nav-item">
+                <a href="dashboard_terapist.php" class="side-nav-link">
+                    <span class="menu-icon"><i data-lucide="home"></i></span>
+                    <span class="menu-text">Dashboard</span>
+                </a>
+            </li>
+                 <?php endif; ?>
+
+            <?php if (isAdmin()): ?>
+            <!-- Personel Yönetimi (sadece admin) -->
+                  <li class="side-nav-item">
                 <a href="dashboard.php" class="side-nav-link">
                     <span class="menu-icon"><i data-lucide="home"></i></span>
                     <span class="menu-text">Dashboard</span>
                 </a>
             </li>
 
-            <?php if (isAdmin()): ?>
-            <!-- Personel Yönetimi (sadece admin) -->
+
+
+                    <?php if (isAdmin()): ?>
+        <!-- SMS/WhatsApp Yönetimi menü item -->
+        <li class="side-nav-item">
+            <a href="sms_whatsapp_yonetimi.php" class="side-nav-link">
+                <span class="menu-icon"><i data-lucide="message-circle"></i></span>
+                <span class="menu-text">SMS/WhatsApp</span>
+                <span class="badge bg-info ms-2">YENİ</span>
+            </a>
+        </li>
+        <?php endif; ?>
+
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPersonel" class="side-nav-link">
                     <span class="menu-icon"><i data-lucide="users"></i></span>
@@ -67,13 +89,13 @@ function isTherapist() {
                             </a>
                         </li>
                         <li class="side-nav-item">
-                            <a href="apps-calendar.php" class="side-nav-link">
+                            <a href="room_schedule.php" class="side-nav-link">
                                 <span class="menu-text">Randevular</span>
                             </a>
                         </li>
                         <li class="side-nav-item">
-                            <a href="room_schedule.php" class="side-nav-link">
-                                <span class="menu-text">Odalar</span>
+                            <a href="room_lock_management.php" class="side-nav-link">
+                                <span class="menu-text">Oda Kapatma</span>
                             </a>
                         </li>
                     </ul>
@@ -168,7 +190,140 @@ function isTherapist() {
             <?php endif; ?>
 
 
+
+
+
+            <?php if (isAdmin()): ?>
+            <!-- Rapor (sadece admin) -->
+            
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarTanımlamalarMuh" class="side-nav-link">
+                    <span class="menu-icon"><i data-lucide="bar-chart-2"></i></span>
+                    <span class="menu-text">Genel Muhasebe</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarTanımlamalarMuh">
+                    <ul class="sub-menu">
+                        <li class="side-nav-item">
+                            <a href="gelir-raporu.php" class="side-nav-link">
+                                <span class="menu-text">Gelir İşlemler</span>
+                            </a>
+                        </li>
+                        <li class="side-nav-item">
+                            <a href="gider-listesi.php" class="side-nav-link">
+                                <span class="menu-text">Gider İşlemler</span>
+                            </a>
+                        </li>
+                        <li class="side-nav-item">
+                            <a href="kar-zarar-analizi.php" class="side-nav-link">
+                                <span class="menu-text">Kar-Zarar Analizi</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+            <?php endif; ?>
+
+
+
+ <?php if (isAdmin()): ?>
+            <!-- İzin Yönetimi (sadece admin) -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarIzinYonetimi" class="side-nav-link">
+                    <span class="menu-icon"><i data-lucide="calendar-check"></i></span>
+                    <span class="menu-text">İzin Yönetimi</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarIzinYonetimi">
+                    <ul class="sub-menu">
+                        <li class="side-nav-item">
+                            <a href="izin-yonetimi.php" class="side-nav-link">
+                                <span class="menu-text">İzin Talepleri</span>
+                            </a>
+                        </li>
+                        <li class="side-nav-item">
+                            <a href="yillik-izin-hesaplama.php" class="side-nav-link">
+                                <span class="menu-text">Yıllık İzin Hesaplama</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            <!-- Bordro & Maaş Yönetimi (sadece admin) -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarBordroYonetimi" class="side-nav-link">
+                    <span class="menu-icon"><i data-lucide="calculator"></i></span>
+                    <span class="menu-text">Bordro Yönetimi</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarBordroYonetimi">
+                    <ul class="sub-menu">
+                        <li class="side-nav-item">
+                            <a href="bordro-yonetimi.php" class="side-nav-link">
+                                <span class="menu-text">Bordro İşlemleri</span>
+                            </a>
+                        </li>
+                        <li class="side-nav-item">
+                            <a href="personel_maas_ayarlari.php" class="side-nav-link">
+                                <span class="menu-text">Maaş Ayarları</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+<li>
+
+            <?php endif; ?>
+
+
    
+
+                  <?php if (isAdmin()): ?>
+       
+        <li class="side-nav-item">
+            <a href="belgeler.php" class="side-nav-link">
+                <span class="menu-icon"><i data-lucide="message-circle"></i></span>
+                <span class="menu-text">Belge Yönetimi</span>
+         
+            </a>
+        </li>
+        <?php endif; ?>
+
+       <?php if (isAdmin()): ?>
+  <!-- Alternatif olarak, basit menü yapısı -->
+<li class="side-nav-title side-nav-item">Raporlar</li>
+
+<li class="side-nav-item">
+    <a href="paket_kullanim_raporu.php" class="side-nav-link">
+        <i class="uil-package"></i>
+        <span>Paket Kullanım Raporu</span>
+    </a>
+</li>
+
+<li class="side-nav-item">
+    <a href="danisan_aktivite_raporu.php" class="side-nav-link">
+        <i class="uil-user-check"></i>
+        <span>Danışan Aktivite Raporu</span>
+    </a>
+</li>
+
+
+<li class="side-nav-item">
+    <a href="toplu-seans-raporu.php" class="side-nav-link">
+        <i class="uil-user-check"></i>
+        <span>Toplu Seans Raporu</span>
+    </a>
+</li>
+
+
+                    
+        <?php endif; ?>
+
+
+
+
     <li class="side-nav-item mt-3">
         <a href="logout.php" class="side-nav-link text-danger">
             <span class="menu-icon"><i data-lucide="log-out"></i></span>
