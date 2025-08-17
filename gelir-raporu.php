@@ -41,10 +41,11 @@ if (!empty($odeme_turu_id)) {
     $params['odeme_turu_id'] = $odeme_turu_id;
 }
 
-// Ana sorgu - Satışları getir
+// Ana sorgu - Satışları getir (faturalandi kolonu eklendi)
 $sql = "SELECT 
     s.id as satis_id,
     s.olusturma_tarihi as tarih,
+    s.faturalandi,  -- Gerçek faturalama durumu
     CONCAT(d.ad, ' ', d.soyad) as ad_soyad,
     st_seans.ad as hizmet,
     st_satis.ad as satis_turu,
@@ -85,6 +86,12 @@ try {
 
 // Toplam hesapla
 $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
+
+// Faturalı/faturasız oranları hesapla
+$faturali_count = count(array_filter($gelirler, function($g) { return $g['faturalandi'] == 1; }));
+$faturasiz_count = count($gelirler) - $faturali_count;
+$faturali_tutar = array_sum(array_column(array_filter($gelirler, function($g) { return $g['faturalandi'] == 1; }), 'nakit_satis'));
+$faturasiz_tutar = $toplam_gelir - $faturali_tutar;
 ?>
 
 <!DOCTYPE html>
@@ -116,8 +123,14 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
             border: 1px solid #ddd;
             vertical-align: middle;
         }
-        .fatura-edildi { background-color: #ffeb3b; }
-        .fatura-edilmedi { background-color: #f44336; color: white; }
+        .fatura-edildi { 
+            background-color: #d4edda !important; 
+            color: #155724;
+        }
+        .fatura-edilmedi { 
+            background-color: #f8d7da !important; 
+            color: #721c24;
+        }
         .filter-row {
             background-color: #f8f9fa;
             padding: 15px;
@@ -130,6 +143,30 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
         }
         .text-center { text-align: center; }
         .text-right { text-align: right; }
+        
+        .fatura-istatistik {
+            border-left: 4px solid #007bff;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+        
+        .fatura-badge {
+            font-size: 0.85em;
+            padding: 0.375rem 0.75rem;
+            border-radius: 0.375rem;
+            font-weight: 600;
+        }
+        
+        .fatura-badge.faturali {
+            background-color: #d1e7dd;
+            color: #0f5132;
+            border: 1px solid #a3cfbb;
+        }
+        
+        .fatura-badge.faturasiz {
+            background-color: #f8d7da;
+            color: #842029;
+            border: 1px solid #f1aeb5;
+        }
     </style>
 </head>
 <body>
@@ -218,8 +255,8 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                                     </form>
                                 </div>
 
-                                <!-- Özet -->
-                                <div class="row mb-3">
+                                <!-- Gelişmiş Özet Kartları -->
+                                <div class="row mb-4">
                                     <div class="col-md-3">
                                         <div class="card bg-success text-white">
                                             <div class="card-body">
@@ -236,6 +273,34 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                                             </div>
                                         </div>
                                     </div>
+                                    <div class="col-md-3">
+                                        <div class="card fatura-istatistik">
+                                            <div class="card-body">
+                                                <h6 class="text-primary mb-2">📄 Faturalı Satışlar</h6>
+                                                <div class="d-flex justify-content-between">
+                                                    <span class="fw-bold"><?= $faturali_count ?> adet</span>
+                                                    <span class="text-success fw-bold"><?= number_format($faturali_tutar, 0, ',', '.') ?> ₺</span>
+                                                </div>
+                                                <small class="text-muted">
+                                                    Toplam satışın %<?= count($gelirler) > 0 ? round(($faturali_count / count($gelirler)) * 100, 1) : 0 ?>'si
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card fatura-istatistik">
+                                            <div class="card-body">
+                                                <h6 class="text-warning mb-2">📋 Faturasız Satışlar</h6>
+                                                <div class="d-flex justify-content-between">
+                                                    <span class="fw-bold"><?= $faturasiz_count ?> adet</span>
+                                                    <span class="text-warning fw-bold"><?= number_format($faturasiz_tutar, 0, ',', '.') ?> ₺</span>
+                                                </div>
+                                                <small class="text-muted">
+                                                    Toplam satışın %<?= count($gelirler) > 0 ? round(($faturasiz_count / count($gelirler)) * 100, 1) : 0 ?>'si
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <!-- Tablo -->
@@ -243,7 +308,7 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                                     <table class="table excel-table" id="gelir_tablosu">
                                         <thead>
                                             <tr>
-                                                <th rowspan="2">FATURA</th>
+                                                <th rowspan="2">FATURA DURUMU</th>
                                                 <th rowspan="2">TARİH</th>
                                                 <th rowspan="2">AD SOYAD</th>
                                                 <th rowspan="2">HİZMET</th>
@@ -255,18 +320,19 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                                                 <th rowspan="2">SATIŞ YAPAN</th>
                                                 <th rowspan="2">TAKSİT DURUMU</th>
                                                 <th rowspan="2">VKN / TC</th>
-                                                 <th rowspan="2">VERGİ DAİRESİ</th>
+                                                <th rowspan="2">VERGİ DAİRESİ</th>
                                                 <th rowspan="2">EMAIL</th>
                                                 <th rowspan="2">FATURA ADRESİ</th>
-                                               
                                                 <th rowspan="2">NOTLAR</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <?php foreach($gelirler as $index => $gelir): ?>
-                                                <tr class="<?= ($index % 2 == 0) ? 'fatura-edildi' : 'fatura-edilmedi' ?>">
+                                                <tr class="<?= $gelir['faturalandi'] ? 'fatura-edildi' : 'fatura-edilmedi' ?>">
                                                     <td class="text-center">
-                                                        <?= ($index % 2 == 0) ? 'FATURA EDİLDİ' : 'FATURA EDİLMEDİ' ?>
+                                                        <span class="fatura-badge <?= $gelir['faturalandi'] ? 'faturali' : 'faturasiz' ?>">
+                                                            <?= $gelir['faturalandi'] ? '✅ FATURA EDİLDİ' : '❌ FATURA EDİLMEDİ' ?>
+                                                        </span>
                                                     </td>
                                                     <td class="text-center"><?= date('d.m.Y', strtotime($gelir['tarih'])) ?></td>
                                                     <td><?= htmlspecialchars($gelir['ad_soyad']) ?></td>
@@ -286,17 +352,20 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                                                         <?php endif; ?>
                                                     </td>
                                                     <td class="text-center"><?= htmlspecialchars($gelir['vkn_tc'] ?? '-') ?></td>
-                                                     <td class="text-center"><?= htmlspecialchars($gelir['vergi_dairesi'] ?? '-') ?></td>
+                                                    <td class="text-center"><?= htmlspecialchars($gelir['vergi_dairesi'] ?? '-') ?></td>
                                                     <td><?= htmlspecialchars($gelir['email'] ?? '-') ?></td>
                                                     <td><?= htmlspecialchars($gelir['fatura_adresi'] ?? '-') ?></td>
-                                                   
                                                     <td><?= htmlspecialchars($gelir['notlar'] ?? '-') ?></td>
                                                 </tr>
                                             <?php endforeach; ?>
                                         </tbody>
                                         <tfoot>
                                             <tr class="summary-row">
-                                                <td colspan="5" class="text-center"><strong>TOPLAM</strong></td>
+                                                <td class="text-center"><strong>TOPLAM</strong></td>
+                                                <td colspan="4" class="text-center">
+                                                    <span class="badge bg-primary me-2">Faturalı: <?= $faturali_count ?></span>
+                                                    <span class="badge bg-secondary">Faturasız: <?= $faturasiz_count ?></span>
+                                                </td>
                                                 <td class="text-right"><strong><?= number_format($toplam_gelir, 0, ',', '.') ?></strong></td>
                                                 <td class="text-right"><strong><?= number_format($toplam_gelir, 0, ',', '.') ?></strong></td>
                                                 <td colspan="9"></td>
@@ -341,7 +410,7 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                 const thead = table.querySelector('thead');
                 thead.innerHTML = `
                     <tr style="background-color: #4CAF50; color: white; font-weight: bold;">
-                        <th>FATURA</th>
+                        <th>FATURA DURUMU</th>
                         <th>TARİH</th>
                         <th>AD SOYAD</th>
                         <th>HİZMET</th>
@@ -353,9 +422,9 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                         <th>SATIŞ YAPAN</th>
                         <th>TAKSİT DURUMU</th>
                         <th>VKN / TC</th>
+                        <th>VERGİ DAİRESİ</th>
                         <th>EMAIL</th>
                         <th>FATURA ADRESİ</th>
-                        <th>VERGİ DAİRESİ</th>
                         <th>NOTLAR</th>
                     </tr>`;
                 
@@ -368,9 +437,11 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                     
                     // Fatura durumu hücresini basitleştir
                     if (cells[0]) {
-                        cells[0].innerHTML = (index % 2 == 0) ? 'FATURA EDİLDİ' : 'FATURA EDİLMEDİ';
-                        cells[0].style.backgroundColor = (index % 2 == 0) ? '#ffeb3b' : '#f44336';
-                        cells[0].style.color = (index % 2 == 0) ? 'black' : 'white';
+                        const faturaDurumu = cells[0].textContent.includes('FATURA EDİLDİ') ? 'FATURA EDİLDİ' : 'FATURA EDİLMEDİ';
+                        cells[0].innerHTML = faturaDurumu;
+                        cells[0].style.backgroundColor = faturaDurumu === 'FATURA EDİLDİ' ? '#d4edda' : '#f8d7da';
+                        cells[0].style.color = faturaDurumu === 'FATURA EDİLDİ' ? '#155724' : '#721c24';
+                        cells[0].style.fontWeight = 'bold';
                     }
                     
                     // Taksit durumu hücresini basitleştir
@@ -413,7 +484,7 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                 
                 // Kolon genişliklerini ayarla
                 ws['!cols'] = [
-                    {wch: 15}, // FATURA
+                    {wch: 18}, // FATURA DURUMU
                     {wch: 12}, // TARİH
                     {wch: 20}, // AD SOYAD
                     {wch: 25}, // HİZMET
@@ -425,9 +496,9 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                     {wch: 15}, // SATIŞ YAPAN
                     {wch: 15}, // TAKSİT DURUMU
                     {wch: 15}, // VKN/TC
+                    {wch: 20}, // VERGİ DAİRESİ
                     {wch: 25}, // EMAIL
                     {wch: 30}, // FATURA ADRESİ
-                    {wch: 20}, // VERGİ DAİRESİ
                     {wch: 30}  // NOTLAR
                 ];
                 
@@ -442,12 +513,19 @@ $toplam_gelir = array_sum(array_column($gelirler, 'nakit_satis'));
                 alert('Excel dosyası indirildi: ' + filename);
             }
 
-            // Fotoğraftaki gibi alternatif renklendirme
+            // Satır renklerini güncelle
             document.addEventListener('DOMContentLoaded', function() {
                 const rows = document.querySelectorAll('#gelir_tablosu tbody tr');
                 rows.forEach((row, index) => {
-                    if (index % 2 === 0) {
-                        row.style.backgroundColor = '#f8f9fa';
+                    // Fatura durumu kontrolü ile renklendirme
+                    const faturaCell = row.querySelector('td:first-child');
+                    if (faturaCell) {
+                        const isFaturali = faturaCell.textContent.includes('FATURA EDİLDİ');
+                        if (isFaturali) {
+                            row.classList.add('fatura-edildi');
+                        } else {
+                            row.classList.add('fatura-edilmedi');
+                        }
                     }
                 });
             });

@@ -20,6 +20,8 @@ $hizmetPaketleri = getHizmetPaketleri();
 
 // 4) İstatistik hesaplamaları
 $total_danisan = count($danisanlar);
+$deneme_uye_sayisi = getDenemeUyeSayisi(); // YENİ: Deneme üyesi sayısı
+$normal_uye_sayisi = getNormalUyeSayisi(); // YENİ: Normal üye sayısı
 $aylik_randevu = !empty($randevular)
     ? count(array_filter($randevular, function($r) {
         return date('Y-m') === date('Y-m', strtotime($r['randevu_tarihi']));
@@ -38,6 +40,7 @@ $ortalama_seans = !empty($seansTurleri)
 $danisan_artis        = getDanisanArtisOrani();
 $iptal_orani          = getRandevuIptalOrani();
 $paket_yenileme_orani = getPaketYenilemeOrani();
+$deneme_donus_orani   = getDenemeUyeDonusumOrani(); // YENİ: Deneme üye dönüşüm oranı
 
 $yarinki_randevu = getYarinkiRandevuSayisi();
 $biten_paket     = getBitenPaketSayisi();
@@ -83,7 +86,7 @@ include __DIR__ . '/partials/header.php';
 
       <div class="container-fluid">
 
-        <!-- İstatistik Kartları -->
+        <!-- İstatistik Kartları - Üst Sıra -->
         <div class="row g-4 mb-4">
           <div class="col-12 col-sm-6 col-xl-3">
             <div class="card h-100">
@@ -92,6 +95,18 @@ include __DIR__ . '/partials/header.php';
                 <div class="ms-3">
                   <h6 class="mb-0">Toplam Danışan</h6>
                   <h2 class="mb-0"><?= $total_danisan ?></h2>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100">
+              <div class="card-body d-flex align-items-center">
+                <i class="bx bx-user-plus fs-3 text-info"></i>
+                <div class="ms-3">
+                  <h6 class="mb-0">Deneme Üyesi</h6>
+                  <h2 class="mb-0"><?= $deneme_uye_sayisi ?></h2>
+                  <small class="text-muted"><?= $normal_uye_sayisi ?> normal üye</small>
                 </div>
               </div>
             </div>
@@ -110,7 +125,7 @@ include __DIR__ . '/partials/header.php';
           <div class="col-12 col-sm-6 col-xl-3">
             <div class="card h-100">
               <div class="card-body d-flex align-items-center">
-                <i class="bx bx-package fs-3 text-info"></i>
+                <i class="bx bx-package fs-3 text-warning"></i>
                 <div class="ms-3">
                   <h6 class="mb-0">Aktif Paketler</h6>
                   <h2 class="mb-0"><?= $aktif_paket ?></h2>
@@ -118,13 +133,53 @@ include __DIR__ . '/partials/header.php';
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- İkinci Sıra İstatistikler -->
+        <div class="row g-4 mb-4">
           <div class="col-12 col-sm-6 col-xl-3">
             <div class="card h-100">
               <div class="card-body d-flex align-items-center">
-                <i class="bx bx-time fs-3 text-warning"></i>
+                <i class="bx bx-time fs-3 text-secondary"></i>
                 <div class="ms-3">
                   <h6 class="mb-0">Ortalama Seans</h6>
                   <h2 class="mb-0"><?= $ortalama_seans ?> dk</h2>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100">
+              <div class="card-body d-flex align-items-center">
+                <i class="bx bx-trending-up fs-3 text-<?= $deneme_donus_orani >= 30 ? 'success' : 'danger' ?>"></i>
+                <div class="ms-3">
+                  <h6 class="mb-0">Deneme Dönüşüm</h6>
+                  <h2 class="mb-0"><?= $deneme_donus_orani ?>%</h2>
+                  <small class="text-muted">deneme → üye</small>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100">
+              <div class="card-body d-flex align-items-center">
+                <i class="bx bx-bell fs-3 text-info"></i>
+                <div class="ms-3">
+                  <h6 class="mb-0">Bekleyen</h6>
+                  <h2 class="mb-0"><?= $yarinki_randevu ?></h2>
+                  <small class="text-muted">yarın randevu</small>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-xl-3">
+            <div class="card h-100">
+              <div class="card-body d-flex align-items-center">
+                <i class="bx bx-phone fs-3 text-warning"></i>
+                <div class="ms-3">
+                  <h6 class="mb-0">Geri Arama</h6>
+                  <h2 class="mb-0"><?= $geri_arama ?></h2>
+                  <small class="text-muted">bekleyen</small>
                 </div>
               </div>
             </div>
@@ -163,7 +218,7 @@ include __DIR__ . '/partials/header.php';
                          style="width:<?= $iptal_orani ?>%"></div>
                   </div>
                 </div>
-                <div>
+                <div class="mb-4">
                   <div class="d-flex justify-content-between">
                     <span>Paket Yenileme</span>
                     <span class="<?= $paket_yenileme_orani>=50?'text-success':'text-danger' ?>">
@@ -174,6 +229,19 @@ include __DIR__ . '/partials/header.php';
                   <div class="progress">
                     <div class="progress-bar <?= $paket_yenileme_orani>=50?'bg-success':'bg-danger' ?>"
                          style="width:<?= $paket_yenileme_orani ?>%"></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="d-flex justify-content-between">
+                    <span>Deneme Dönüşüm</span>
+                    <span class="<?= $deneme_donus_orani>=30?'text-success':'text-danger' ?>">
+                      <i class="bx bx-trending-<?= $deneme_donus_orani>=30?'up':'down' ?>"></i>
+                      <?= $deneme_donus_orani ?>%
+                    </span>
+                  </div>
+                  <div class="progress">
+                    <div class="progress-bar <?= $deneme_donus_orani>=30?'bg-success':'bg-danger' ?>"
+                         style="width:<?= $deneme_donus_orani ?>%"></div>
                   </div>
                 </div>
               </div>
@@ -247,7 +315,7 @@ include __DIR__ . '/partials/header.php';
                   </div>
                 <?php endif; ?>
                 <?php if ($geri_arama): ?>
-                  <div class="d-flex align-items-start">
+                  <div class="d-flex align-items-start mb-4">
                     <div class="p-2 bg-info bg-opacity-10 rounded text-info">
                       <i class="bx bx-phone fs-4"></i>
                     </div>
@@ -257,7 +325,18 @@ include __DIR__ . '/partials/header.php';
                     </div>
                   </div>
                 <?php endif; ?>
-                <?php if (!$yarinki_randevu && !$biten_paket && !$geri_arama): ?>
+                <?php if ($deneme_uye_sayisi > 0): ?>
+                  <div class="d-flex align-items-start">
+                    <div class="p-2 bg-success bg-opacity-10 rounded text-success">
+                      <i class="bx bx-user-plus fs-4"></i>
+                    </div>
+                    <div class="ms-3">
+                      <h6><?= $deneme_uye_sayisi ?> deneme üyesi takipte</h6>
+                      <small class="text-muted">Dönüşüm için takip gerekli</small>
+                    </div>
+                  </div>
+                <?php endif; ?>
+                <?php if (!$yarinki_randevu && !$biten_paket && !$geri_arama && !$deneme_uye_sayisi): ?>
                   <div class="text-center text-muted py-4">
                     <i class="bx bx-check-circle fs-1"></i>
                     <p class="mt-2">Şu anda bildirim bulunmuyor</p>
@@ -291,7 +370,12 @@ include __DIR__ . '/partials/header.php';
                   <?php if (!empty($randevular)): ?>
                     <?php foreach (array_slice($randevular, 0, 5) as $r): ?>
                       <tr>
-                        <td><?= htmlspecialchars($r['danisan_adi']) ?></td>
+                        <td>
+                          <?= htmlspecialchars($r['danisan_adi']) ?>
+                          <?php if (isset($r['danisan_deneme_mi']) && $r['danisan_deneme_mi']): ?>
+                            <span class="badge bg-info ms-1">Deneme</span>
+                          <?php endif; ?>
+                        </td>
                         <td><?= htmlspecialchars($r['personel_adi']) ?></td>
                         <td><?= htmlspecialchars($r['seans_turu']) ?></td>
                         <td><?= date('d.m.Y H:i', strtotime($r['randevu_tarihi'])) ?></td>

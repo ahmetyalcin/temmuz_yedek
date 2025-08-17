@@ -340,10 +340,17 @@ $odemeler = $gider_detay['odemeler'];
                 });
 
                 // Ödeme formu gönderme
-                $('#odemeForm').submit(function(e) {
+               $(document).on('submit', '#odemeForm', function(e) {
                     e.preventDefault();
                     
+                    // Form verilerini serialize et
                     const formData = $(this).serialize();
+                    console.log('Form verisi gönderiliyor:', formData);
+                    
+                    // Loading state
+                    const submitBtn = $(this).find('button[type="submit"]');
+                    const originalText = submitBtn.html();
+                    submitBtn.html('<i class="fas fa-spinner fa-spin me-2"></i>Kaydediliyor...').prop('disabled', true);
                     
                     $.ajax({
                         url: 'ajax/gider-odeme-ekle.php',
@@ -351,6 +358,8 @@ $odemeler = $gider_detay['odemeler'];
                         data: formData,
                         dataType: 'json',
                         success: function(response) {
+                            console.log('AJAX yanıtı:', response);
+                            
                             if (response.success) {
                                 alert('Ödeme başarıyla kaydedildi!');
                                 location.reload();
@@ -358,8 +367,26 @@ $odemeler = $gider_detay['odemeler'];
                                 alert('Hata: ' + response.message);
                             }
                         },
-                        error: function() {
-                            alert('Bir hata oluştu!');
+                        error: function(xhr, status, error) {
+                         
+                            console.error('AJAX Hatası:', {
+                                status: status,
+                                error: error,
+                                responseText: xhr.responseText
+                            });
+                            
+                            let errorMessage = 'Bir hata oluştu!';
+                            try {
+                                const errorResponse = JSON.parse(xhr.responseText);
+                                errorMessage = errorResponse.message || errorMessage;
+                            } catch(e) {
+                                errorMessage = 'Sunucu hatası: ' + xhr.responseText;
+                            }
+                            alert(errorMessage);
+                        },
+                        complete: function() {
+                            // Loading state'i kaldır
+                            submitBtn.html(originalText).prop('disabled', false);
                         }
                     });
                 });

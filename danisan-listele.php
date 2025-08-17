@@ -13,11 +13,12 @@ $basari = '';
 // Arama ve Paging Ayarları
 $arama = isset($_GET['arama']) ? trim($_GET['arama']) : '';
 $kategori_id = isset($_GET['kategori_id']) ? $_GET['kategori_id'] : '';
+$deneme_filter = isset($_GET['deneme_filter']) ? $_GET['deneme_filter'] : 'all';
 $sayfa = isset($_GET['s']) ? max(1, (int)$_GET['s']) : 1;
 $sayfa_basi = 50;
 $offset = ($sayfa - 1) * $sayfa_basi;
-$toplam_danisan = getDanisanlarCountFiltered($arama, $kategori_id);
-$danisanlar = getDanisanlarPagingFiltered($arama, $sayfa_basi, $offset, $kategori_id);
+$toplam_danisan = getDanisanlarCountFiltered($arama, $kategori_id, $deneme_filter);
+$danisanlar = getDanisanlarPagingFiltered($arama, $sayfa_basi, $offset, $kategori_id, $deneme_filter);
 $toplam_sayfa = max(1, ceil($toplam_danisan / $sayfa_basi));
 
 // Form işlemleri
@@ -25,14 +26,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (isset($_POST['islem'])) {
         switch ($_POST['islem']) {
             case 'danisan_ekle':
+                $deneme_mi = isset($_POST['deneme_mi']) ? 1 : 0;
                 $sonuc = danisanEkle(
                     $_POST['ad'],
                     $_POST['soyad'],
-                    $_POST['email'],
                     $_POST['telefon'],
                     $_POST['adres'],
-                    $_POST['yas'],
-                    $_POST['meslek']
+                    $_POST['email'] ?? null,
+                    $_POST['dogum_tarihi'] ?? null,
+                    $_POST['meslek'] ?? null,
+                    $_POST['vergi_dairesi'] ?? null,
+                    $_POST['vergi_numarasi'] ?? null,
+                    $_POST['fatura_adresi'] ?? null,
+                    $deneme_mi
                 );
                 if ($sonuc) {
                     $basari = "Danışan başarıyla eklendi.";
@@ -44,16 +50,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 break;
 
             case 'danisan_guncelle':
+                $deneme_mi = isset($_POST['deneme_mi']) ? 1 : 0;
                 $sonuc = danisanGuncelle(
                     $_POST['id'],
                     $_POST['ad'],
                     $_POST['soyad'],
-                    $_POST['email'],
                     $_POST['telefon'],
                     $_POST['adres'],
-                    $_POST['yas'],
-                    $_POST['meslek'],
-                    $_POST['uyelik_turu_id']
+                    $_POST['email'] ?? null,
+                    $_POST['dogum_tarihi'] ?? null,
+                    $_POST['meslek'] ?? null,
+                    $_POST['uyelik_turu_id'],
+                    $_POST['vergi_dairesi'] ?? null,
+                    $_POST['vergi_numarasi'] ?? null,
+                    $_POST['fatura_adresi'] ?? null,
+                    $deneme_mi
                 );
                 if ($sonuc) {
                     $basari = "Danışan başarıyla güncellendi.";
@@ -70,7 +81,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 // Düzenleme için danışan bilgileri
 $duzenlenecek_danisan = null;
 if ($action == 'edit' && isset($_GET['id'])) {
-    $tumdanisanlar = getDanisanlarPagingFiltered('', 10000, 0);
+    $tumdanisanlar = getDanisanlarPagingFiltered('', 10000, 0, null, 'all');
     foreach ($tumdanisanlar as $danisan) {
         if ($danisan['id'] == $_GET['id']) {
             $duzenlenecek_danisan = $danisan;
@@ -122,7 +133,17 @@ if ($action == 'edit' && isset($_GET['id'])) {
     <?php if ($action == 'list'): ?>
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"></h5>
+                <h5 class="mb-0">
+                    <?php 
+                    $filter_text = '';
+                    switch($deneme_filter) {
+                        case 'deneme': $filter_text = ' - Deneme Üyeleri'; break;
+                        case 'normal': $filter_text = ' - Normal Üyeler'; break;
+                        default: $filter_text = ' - Tüm Danışanlar'; break;
+                    }
+                    echo "Danışan Listesi $filter_text ($toplam_danisan kişi)";
+                    ?>
+                </h5>
                 <a href="?action=new" class="btn btn-primary">
                     <i class="bx bx-plus"></i> Yeni Danışan
                 </a>
@@ -130,11 +151,14 @@ if ($action == 'edit' && isset($_GET['id'])) {
             <div class="card-body">
                 <div class="table-responsive">
 
-        <!-- Arama + Kategori Filtresi -->
-        <form method="get" class="mb-3 d-flex justify-content-end">
+        <!-- Arama + Kategori + Deneme Filtresi -->
+        <form method="get" class="mb-3 d-flex justify-content-end flex-wrap gap-2">
           <input type="hidden" name="page" value="danisanlar">
-          <input type="text" name="arama" value="<?php echo htmlspecialchars($arama); ?>" class="form-control w-auto" placeholder="Ara..." style="margin-right:10px;max-width:200px;">
-          <select name="kategori_id" class="form-select w-auto" style="margin-right:10px;max-width:200px;">
+          
+          <input type="text" name="arama" value="<?php echo htmlspecialchars($arama); ?>" 
+                 class="form-control" placeholder="Ad, soyad, email veya telefon ara..." style="max-width:250px;">
+          
+          <select name="kategori_id" class="form-select" style="max-width:200px;">
             <option value="">Tüm Kategoriler</option>
             <?php foreach($kategoriler as $kat): ?>
               <option value="<?php echo $kat['id']; ?>" <?php echo $kategori_id == $kat['id'] ? 'selected' : ''; ?>>
@@ -142,19 +166,27 @@ if ($action == 'edit' && isset($_GET['id'])) {
               </option>
             <?php endforeach; ?>
           </select>
+          
+          <select name="deneme_filter" class="form-select" style="max-width:200px;">
+            <option value="all" <?php echo $deneme_filter == 'all' ? 'selected' : ''; ?>>Tüm Danışanlar</option>
+            <option value="normal" <?php echo $deneme_filter == 'normal' ? 'selected' : ''; ?>>Normal Üyeler</option>
+            <option value="deneme" <?php echo $deneme_filter == 'deneme' ? 'selected' : ''; ?>>Deneme Üyeleri</option>
+          </select>
+          
           <button class="btn btn-primary" type="submit">Filtrele</button>
         </form>
 
-        <table id="datatable" class="table table-bordered dt-responsive nowrap"
-               style="border-collapse: collapse; border-spacing: 0; width: 100%;">
+        <table id="datatable" class="table table-bordered dt-responsive nowrap table-sm"
+               style="border-collapse: collapse; border-spacing: 0; width: 100%; font-size: 0.875rem;">
             <thead>
                 <tr>
                     <th>Ad Soyad</th>
                     <th>Email</th>
                     <th>Telefon</th>
-                    <th>Yaş</th>
+                    <th>Doğum Tarihi / Yaş</th>
                     <th>Meslek</th>
                     <th>Kategoriler</th>
+                    <th>Durum</th>
                     <th>İşlemler</th>
                 </tr>
             </thead>
@@ -162,17 +194,42 @@ if ($action == 'edit' && isset($_GET['id'])) {
                 <?php foreach ($danisanlar as $danisan): ?>
                 <tr>
                     <td><?php echo htmlspecialchars($danisan['ad'] . ' ' . $danisan['soyad']); ?></td>
-                    <td><?php echo htmlspecialchars($danisan['email'] ?? ''); ?></td>
+                    <td><?php echo htmlspecialchars($danisan['email'] ?? '-'); ?></td>
                     <td><?php echo htmlspecialchars($danisan['telefon'] ?? ''); ?></td>
-                    <td><?php echo htmlspecialchars($danisan['yas'] ?? ''); ?></td>
-                    <td><?php echo htmlspecialchars($danisan['meslek'] ?? ''); ?></td>
                     <td>
-
-          <span class="badge bg-info">
-                <?php echo htmlspecialchars($danisan['kategoriler'] ?? '-'); ?>
-                        </span>
-
-                     
+                        <?php 
+                        if ($danisan['dogum_tarihi']) {
+                            $dogum_tarihi = new DateTime($danisan['dogum_tarihi']);
+                            $yas = hesaplaYas($danisan['dogum_tarihi']);
+                            echo $dogum_tarihi->format('d.m.Y') . '<br><small class="text-muted">(' . $yas . ' yaş)</small>';
+                        } else {
+                            echo '<span class="text-muted">-</span>';
+                        }
+                        ?>
+                    </td>
+                    <td><?php echo htmlspecialchars($danisan['meslek'] ?? '-'); ?></td>
+                    <td style="max-width: 150px;">
+                        <?php 
+                        if ($danisan['kategoriler']) {
+                            $kategoriler = explode(', ', $danisan['kategoriler']);
+                            foreach ($kategoriler as $kategori) {
+                                echo '<span class="badge bg-info text-white me-1 mb-1" style="font-size: 0.65rem; padding: 0.2rem 0.4rem; display: inline-block; white-space: nowrap;">' . htmlspecialchars(trim($kategori)) . '</span>';
+                            }
+                        } else {
+                            echo '<span class="text-muted">-</span>';
+                        }
+                        ?>
+                    </td>
+                    <td>
+                        <?php if (isset($danisan['deneme_mi']) && $danisan['deneme_mi'] == 1): ?>
+                            <span class="badge bg-warning text-dark">
+                                <i class="bx bx-user-plus"></i> Deneme
+                            </span>
+                        <?php else: ?>
+                            <span class="badge bg-success">
+                                <i class="bx bx-user-check"></i> Normal
+                            </span>
+                        <?php endif; ?>
                     </td>
                     <td class="text-end">
                         <div class="btn-group btn-group-sm">
@@ -208,24 +265,24 @@ if ($action == 'edit' && isset($_GET['id'])) {
         <nav>
             <ul class="pagination">
                 <li class="page-item <?php if ($sayfa <= 1) echo 'disabled'; ?>">
-                    <a class="page-link" href="?page=danisanlar&s=<?php echo $sayfa-1; ?>&arama=<?php echo urlencode($arama); ?>&kategori_id=<?php echo $kategori_id; ?>">«</a>
+                    <a class="page-link" href="?page=danisanlar&s=<?php echo $sayfa-1; ?>&arama=<?php echo urlencode($arama); ?>&kategori_id=<?php echo $kategori_id; ?>&deneme_filter=<?php echo $deneme_filter; ?>">«</a>
                 </li>
                 <?php
                 $max_show = 2; $start = max(1, $sayfa - $max_show); $end = min($toplam_sayfa, $sayfa + $max_show);
                 if ($start > 1) {
-                    echo '<li class="page-item"><a class="page-link" href="?page=danisanlar&s=1&arama='.urlencode($arama).'&kategori_id='.$kategori_id.'">1</a></li>';
+                    echo '<li class="page-item"><a class="page-link" href="?page=danisanlar&s=1&arama='.urlencode($arama).'&kategori_id='.$kategori_id.'&deneme_filter='.$deneme_filter.'">1</a></li>';
                     if ($start > 2) echo '<li class="page-item disabled"><span class="page-link">...</span></li>';
                 }
                 for ($i = $start; $i <= $end; $i++) {
-                    echo '<li class="page-item '.($i == $sayfa ? 'active' : '').'"><a class="page-link" href="?page=danisanlar&s='.$i.'&arama='.urlencode($arama).'&kategori_id='.$kategori_id.'">'.$i.'</a></li>';
+                    echo '<li class="page-item '.($i == $sayfa ? 'active' : '').'"><a class="page-link" href="?page=danisanlar&s='.$i.'&arama='.urlencode($arama).'&kategori_id='.$kategori_id.'&deneme_filter='.$deneme_filter.'">'.$i.'</a></li>';
                 }
                 if ($end < $toplam_sayfa) {
                     if ($end < $toplam_sayfa - 1) echo '<li class="page-item disabled"><span class="page-link">...</span></li>';
-                    echo '<li class="page-item"><a class="page-link" href="?page=danisanlar&s='.$toplam_sayfa.'&arama='.urlencode($arama).'&kategori_id='.$kategori_id.'">'.$toplam_sayfa.'</a></li>';
+                    echo '<li class="page-item"><a class="page-link" href="?page=danisanlar&s='.$toplam_sayfa.'&arama='.urlencode($arama).'&kategori_id='.$kategori_id.'&deneme_filter='.$deneme_filter.'">'.$toplam_sayfa.'</a></li>';
                 }
                 ?>
                 <li class="page-item <?php if ($sayfa >= $toplam_sayfa) echo 'disabled'; ?>">
-                    <a class="page-link" href="?page=danisanlar&s=<?php echo $sayfa+1; ?>&arama=<?php echo urlencode($arama); ?>&kategori_id=<?php echo $kategori_id; ?>">»</a>
+                    <a class="page-link" href="?page=danisanlar&s=<?php echo $sayfa+1; ?>&arama=<?php echo urlencode($arama); ?>&kategori_id=<?php echo $kategori_id; ?>&deneme_filter=<?php echo $deneme_filter; ?>">»</a>
                 </li>
             </ul>
         </nav>
@@ -250,39 +307,84 @@ if ($action == 'edit' && isset($_GET['id'])) {
                     <?php endif; ?>
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Ad</label>
+                            <label class="form-label">Ad <span class="text-danger">*</span></label>
                             <input type="text" name="ad" class="form-control" required
                                    value="<?php echo $duzenlenecek_danisan['ad'] ?? ''; ?>">
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Soyad</label>
+                            <label class="form-label">Soyad <span class="text-danger">*</span></label>
                             <input type="text" name="soyad" class="form-control" required
                                    value="<?php echo $duzenlenecek_danisan['soyad'] ?? ''; ?>">
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Email</label>
-                            <input type="email" name="email" class="form-control" required
+                            <input type="email" name="email" class="form-control"
                                    value="<?php echo $duzenlenecek_danisan['email'] ?? ''; ?>">
+                            <small class="form-text text-muted">İsteğe bağlı</small>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Telefon</label>
+                            <label class="form-label">Telefon <span class="text-danger">*</span></label>
                             <input type="tel" name="telefon" class="form-control" required
                                    value="<?php echo $duzenlenecek_danisan['telefon'] ?? ''; ?>">
                         </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Doğum Tarihi</label>
+                            <input type="date" name="dogum_tarihi" class="form-control"
+                                   value="<?php echo $duzenlenecek_danisan['dogum_tarihi'] ?? ''; ?>">
+                            <small class="form-text text-muted">İsteğe bağlı - yaş hesaplanır</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Meslek</label>
+                            <input type="text" name="meslek" class="form-control"
+                                   value="<?php echo $duzenlenecek_danisan['meslek'] ?? ''; ?>">
+                            <small class="form-text text-muted">İsteğe bağlı</small>
+                        </div>
+
+                        <!-- Deneme Üyesi Checkbox -->
+                        <div class="col-md-12 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="deneme_mi" id="deneme_mi" value="1"
+                                       <?php echo (isset($duzenlenecek_danisan['deneme_mi']) && $duzenlenecek_danisan['deneme_mi'] == 1) ? 'checked' : ''; ?>>
+                                <label class="form-check-label" for="deneme_mi">
+                                    <span class="badge bg-warning text-dark me-2">
+                                        <i class="bx bx-user-plus"></i>
+                                    </span>
+                                    <strong>Deneme Üyesi</strong>
+                                    <small class="text-muted d-block">Bu kişi deneme seansı almak için kayıt oluyor</small>
+                                </label>
+                            </div>
+                        </div>
+
+                       <div class="col-md-6 mb-3">
+                        <label class="form-label">Vergi Dairesi</label>
+                        <input type="text" name="vergi_dairesi" class="form-control" 
+                              placeholder="Örn: Konak Vergi Dairesi"
+                              value="<?php echo $duzenlenecek_danisan['vergi_dairesi'] ?? ''; ?>">
+                        <small class="form-text text-muted">Kurumsal müşteriler için zorunlu</small>
+                    </div>
+
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Vergi Numarası</label>
+                        <input type="text" name="vergi_numarasi" class="form-control" 
+                              placeholder="10 haneli vergi numarası"
+                              maxlength="20"
+                              pattern="[0-9]*"
+                              value="<?php echo $duzenlenecek_danisan['vergi_numarasi'] ?? ''; ?>">
+                        <small class="form-text text-muted">Sadece rakam giriniz</small>
+                    </div>
+
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Fatura Adresi</label>
+                        <textarea name="fatura_adresi" class="form-control" rows="3" 
+                                  placeholder="Faturanın gönderileceği adres..."><?php echo $duzenlenecek_danisan['fatura_adresi'] ?? ''; ?></textarea>
+                        <small class="form-text text-muted">Boş bırakılırsa genel adres kullanılır</small>
+                    </div>
+
                         <div class="col-md-12 mb-3">
                             <label class="form-label">Adres</label>
                             <textarea name="adres" class="form-control" rows="3"><?php echo $duzenlenecek_danisan['adres'] ?? ''; ?></textarea>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Yaş</label>
-                            <input type="number" name="yas" class="form-control" required min="0"
-                                   value="<?php echo $duzenlenecek_danisan['yas'] ?? ''; ?>">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Meslek</label>
-                            <input type="text" name="meslek" class="form-control" required
-                                   value="<?php echo $duzenlenecek_danisan['meslek'] ?? ''; ?>">
-                        </div>
+                        
                         <?php if ($action == 'edit'): ?>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Üyelik Türü</label>
@@ -425,7 +527,6 @@ function notlariGetir(danisanId, danisanAd) {
   });
 }
 
-
 $(document).on('click', '.notlar-btn', function(e) {
   e.preventDefault();
   let danisanId = $(this).data('danisan-id');
@@ -472,7 +573,6 @@ $(document).on('click', '.sil-not-btn', function() {
     }, 'json');
   }
 });
-
 
 function turkceTarihFormatla(isoTarih) {
   if (!isoTarih) return '';

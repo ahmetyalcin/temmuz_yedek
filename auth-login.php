@@ -22,9 +22,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['personel_id'] = $personel['id'];
 
             
-
+                if ($personel['rol'] == 'yonetici') {
+                   header("Location: dashboard.php");
+                } else {
+                   header("Location: dashboard_terapist.php");
+                }   
             // Yönlendirme
-            header("Location: dashboard.php");
+           
             exit;
         } else {
             $hata = "Kullanıcı adı veya şifre hatalı!";
