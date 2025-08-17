@@ -1,4 +1,5 @@
 <?php
+// ajax/get_appointment.php
 include_once '../con/db.php';
 
 header('Content-Type: application/json');
@@ -10,23 +11,24 @@ if (!isset($_GET['id'])) {
 
 try {
     $sql = "SELECT r.*, 
-                   d.ad as danisan_ad, d.soyad as danisan_soyad,
-                   p.ad as personel_ad, p.soyad as personel_soyad,
-                   st.ad as seans_turu_ad
+                   CONCAT(d.ad, ' ', d.soyad) as danisan_adi,
+                   st.ad as paket_adi,
+                   s.id as satis_id,
+                   s.hizmet_paketi_id as seans_turu_id
             FROM randevular r
-            JOIN danisanlar d ON d.id = r.danisan_id
-            JOIN personel p ON p.id = r.personel_id
-            JOIN seans_turleri st ON st.id = r.seans_turu_id
+            LEFT JOIN danisanlar d ON d.id = r.danisan_id
+            LEFT JOIN satislar s ON s.id = r.satis_id
+            LEFT JOIN seans_turleri st ON st.id = s.hizmet_paketi_id
             WHERE r.id = ? AND r.aktif = 1";
     
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$_GET['id']]);
-    $randevu = $stmt->fetch(PDO::FETCH_ASSOC);
+    $appointment = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    if ($randevu) {
+    if ($appointment) {
         echo json_encode([
             'success' => true,
-            'data' => $randevu
+            'data' => $appointment
         ]);
     } else {
         echo json_encode([
@@ -35,9 +37,10 @@ try {
         ]);
     }
 } catch(PDOException $e) {
+    error_log("Get appointment error: " . $e->getMessage());
     echo json_encode([
         'success' => false,
-        'message' => 'Veritabanı hatası: ' . $e->getMessage()
+        'message' => 'Veritabanı hatası'
     ]);
 }
 ?>
