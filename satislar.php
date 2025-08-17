@@ -77,6 +77,7 @@ $rooms = getRooms(); // Get rooms
                             <th>Kalan</th>
                             <th>Son Ödeme</th>
                             <th>Durum</th>
+                            <th>Faturalama</th>
                             <th>İşlemler</th>
                         </tr>
                     </thead>
@@ -117,8 +118,35 @@ $rooms = getRooms(); // Get rooms
                                     <span class="badge bg-warning">Bekliyor</span>
                                 <?php endif; ?>
                             </td>
+
+                              <td>
+                                                        <div class="form-check form-switch">
+                                                            <input class="form-check-input fatura-switch" 
+                                                                   type="checkbox" 
+                                                                   id="fatura_<?= $satis['id'] ?>"
+                                                                   data-satis-id="<?= $satis['id'] ?>"
+                                                                   <?= $satis['faturalandi'] ? 'checked' : '' ?>>
+                                                            <label class="form-check-label" for="fatura_<?= $satis['id'] ?>">
+                                                                <span class="fatura-label">
+                                                                    <?= $satis['faturalandi'] ? 'Faturalı' : 'Faturasız' ?>
+                                                                </span>
+                                                            </label>
+                                                        </div>
+                                                    </td>
+
                             <td>
                                 <div class="btn-group">
+
+
+    <!-- Düzenleme Butonu -->
+    <a href="satis_form.php?edit=<?= htmlspecialchars($satis['id']) ?>" 
+       class="btn btn-sm btn-outline-warning" 
+       title="Satışı Düzenle">
+        <i class="fas fa-edit"></i> Düzenle
+    </a>
+
+
+
                                     <button type="button" class="btn btn-sm btn-info" 
                                             onclick="showDetails('<?php echo $satis['id']; ?>')">
                                         <i class="fas fa-info-circle"></i>Ödeme
@@ -146,13 +174,7 @@ $rooms = getRooms(); // Get rooms
                                                 : ($satis['vade_tarihi'] < date('Y-m-d') ? 'danger' : 'warning');
                                         ?>
 
-                                        <?php if ($randevuSayisi === 0): ?>
-                                    <button type="button" 
-                                            class="btn btn-sm btn-danger" 
-                                            onclick="deleteSale('<?= $satis['id'] ?>')">
-                                        <i class="fas fa-trash-alt"></i> Sil
-                                    </button>
-                                <?php endif; ?>
+                          
 
                                 </div>
                             </td>
@@ -336,7 +358,101 @@ $rooms = getRooms(); // Get rooms
     </div>
 </div>
 
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
 <script>
+$(document).ready(function(){
+
+ $('.fatura-switch').change(function() {
+        const satisId = $(this).data('satis-id');
+        const faturalandi = $(this).is(':checked') ? 1 : 0;
+        const labelElement = $(this).siblings('label').find('.fatura-label');
+        const switchElement = this;
+        
+        // Loading durumu göster
+        $(this).prop('disabled', true);
+        
+        $.ajax({
+            url: 'ajax/update_fatura_status.php',
+            method: 'POST',
+            data: {
+                satis_id: satisId,
+                faturalandi: faturalandi
+            },
+            dataType: 'json',
+            success: function(response) {
+                if (response.success) {
+                    // Label'ı güncelle
+                    labelElement.text(faturalandi ? 'Faturalı' : 'Faturasız');
+                    
+                    // Toast mesajı göster
+                    showToast(response.message || 'Faturalama durumu başarıyla güncellendi', 'success');
+                } else {
+                    // Hata durumunda checkbox'ı eski haline getir
+                    $(switchElement).prop('checked', !faturalandi);
+                    showToast(response.error || 'Faturalama durumu güncellenirken hata oluştu', 'error');
+                }
+            },
+            error: function(xhr, status, error) {
+                // Hata durumunda checkbox'ı eski haline getir
+                $(switchElement).prop('checked', !faturalandi);
+                
+                let errorMessage = 'Bir hata oluştu';
+                if (xhr.responseJSON && xhr.responseJSON.error) {
+                    errorMessage = xhr.responseJSON.error;
+                } else if (xhr.status === 404) {
+                    errorMessage = 'AJAX dosyası bulunamadı';
+                } else if (xhr.status === 500) {
+                    errorMessage = 'Sunucu hatası';
+                }
+                
+                showToast(errorMessage, 'error');
+                console.error('AJAX Error:', error);
+            },
+            complete: function() {
+                // Loading durumunu kaldır
+                $(switchElement).prop('disabled', false);
+            }
+        });
+    });
+
+
+// Toast mesajı gösterme fonksiyonu
+function showToast(message, type = 'info') {
+    const toastClass = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
+    
+    const toastHTML = `
+        <div class="toast align-items-center text-white ${toastClass} border-0" role="alert">
+            <div class="d-flex">
+                <div class="toast-body">
+                    ${message}
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        </div>
+    `;
+    
+    // Toast container oluştur
+    if (!$('#toast-container').length) {
+        $('body').append('<div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3"></div>');
+    }
+    
+    const toastElement = $(toastHTML).appendTo('#toast-container');
+    const toast = new bootstrap.Toast(toastElement[0]);
+    toast.show();
+    
+    // Toast gösterildikten sonra DOM'dan kaldır
+    toastElement.on('hidden.bs.toast', function() {
+        $(this).remove();
+    });
+}
+
+});
+</script>
+
+<script>
+
+
+
 let currentSaleId;
 let totalSlots = 0;
 let selectedSlots = [];
@@ -508,11 +624,13 @@ function showDetails(satisId) {
                 
                 if (data.odemeler && data.odemeler.length > 0) {
                     data.odemeler.forEach(odeme => {
+
+                        const odemeTuru = odeme.odeme_turu_adi || odeme.odeme_tipi || '-';
                         odemeHtml += `
                             <tr>
                                 <td>${formatDate(odeme.odeme_tarihi)}</td>
                                 <td>${formatPrice(odeme.tutar)}</td>
-                                <td>${odeme.odeme_tipi}</td>
+                                <td>${odemeTuru}</td>
                             </tr>`;
                     });
                 } else {
@@ -1248,7 +1366,12 @@ function cancelSlot2(index) {
 }
 
 
+
+
 </script>
+
+
+
 
 <style>
 /* Add styles for gift sessions */
